@@ -55,6 +55,10 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'Lavandaria.urls'
 
+CSRF_TRUSTED_ORIGINS = [
+    'https://lavandaria.up.railway.app',
+]
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
