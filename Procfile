@@ -1,0 +1,1 @@
+web: gunicorn powerWashing.wsgi:application --log-file -

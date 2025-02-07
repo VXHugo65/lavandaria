@@ -1,0 +1,21 @@
+======================================
+          POWERWASHING LTDA
+======================================
+Pedido: {{ pedido.id }}
+Cliente: {{ pedido.cliente.nome }}
+Lavandaria: {{ pedido.lavandaria.nome }}
+Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+- - - - - - - - - - - - - - - - - - - -
+Itens do Pedido:
+{% for item in pedido.itens.all %}
+  {{ item.quantidade }}x {{ item.item_de_servico.nome }} {{ item.cor }}
+  Total: {{ item.preco_total }} MZN
+{% endfor %}
+- - - - - - - - - - - - - - - - - - - -
+Total: {{ pedido.total }} MZN
+Pago: {{ pedido.pago|yesno:"Sim,Não" }}
+Método de Pagamento: {{ pedido.get_metodo_pagamento_display }}
+Status: {{ pedido.get_status_display }}
+======================================
+
+
