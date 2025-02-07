@@ -33,7 +33,7 @@ class GroupAdmin(BaseGroupAdmin, ModelAdmin):
 # Inline para gerenciar os itens de pedido diretamente no pedido
 class ItemPedidoInline(TabularInline):
     model = ItemPedido
-    extra = 1  # Número de linhas extras para novos itens
+    extra = 0  # Número de linhas extras para novos itens
     fields = ('servico', 'item_de_servico', 'cor', 'quantidade', 'preco_total')
     readonly_fields = ('preco_total',)
 
