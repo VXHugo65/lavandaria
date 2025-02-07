@@ -1,21 +1,27 @@
 ======================================
-          POWERWASHING LTDA
+          POWER WASHING, LDA
 ======================================
-Pedido: {{ pedido.id }}
-Cliente: {{ pedido.cliente.nome }}
-Lavandaria: {{ pedido.lavandaria.nome }}
+401426310
+{{ pedido.lavandaria.nome }}
+{{ pedido.lavandaria.endereco }}
+Cel.: {{ pedido.lavandaria.telefone }}
+
+Pedido: N.{{ pedido.id }}
+Cli.: {{ pedido.cliente.nome }}
+{{ pedido.cliente.telefone }}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+
 - - - - - - - - - - - - - - - - - - - -
-Itens do Pedido:
+Itens do Pedido
+- - - - - - - - - - - - - - - - - - - -
 {% for item in pedido.itens.all %}
-  {{ item.quantidade }}x {{ item.item_de_servico.nome }} {{ item.cor }}
-  Total: {{ item.preco_total }} MZN
+  {{ item.quantidade }}x {{ item.item_de_servico.nome }} ({{ item.cor }})
+  {{ item.preco_total }} MZN
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - -
 Total: {{ pedido.total }} MZN
 Pago: {{ pedido.pago|yesno:"Sim,Não" }}
 Método de Pagamento: {{ pedido.get_metodo_pagamento_display }}
-Status: {{ pedido.get_status_display }}
+Estado: {{ pedido.get_status_display }}
 ======================================
-
 
