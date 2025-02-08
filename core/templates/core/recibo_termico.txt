@@ -25,6 +25,4 @@ Método de Pagamento: {{ pedido.get_metodo_pagamento_display }}
 Estado: {{ pedido.get_status_display }}
 ======================================
 Obrigado!
-
-======================================
 ======================================
