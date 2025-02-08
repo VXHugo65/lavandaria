@@ -33,7 +33,7 @@ def imprimir_recibo_imagem(request, pedido_id):
 
     # Ajuste do tamanho da fonte e cálculo da altura
     try:
-        font = ImageFont.truetype("arial.ttf", 17)
+        font = ImageFont.truetype("arial.ttf", 25)
     except IOError:
         font = ImageFont.load_default()
 
