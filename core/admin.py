@@ -74,12 +74,12 @@ class FuncionarioAdmin(ModelAdmin):
 
 # Configuração do modelo ItemServico no Admin
 @admin.register(ItemServico)
-class ItemServicoAdmin(ModelAdmin):
+class ItemServicoAdmin(ModelAdmin, ImportExportModelAdmin):
     list_display = ('nome', 'preco_base', 'disponivel')
     search_fields = ('nome',)
     list_filter = ('disponivel',)
-    # import_form_class = ImportForm
-    # export_form_class = ExportForm
+    import_form_class = ImportForm
+    export_form_class = ExportForm
 
 
 # Configuração do modelo Servico no Admin
