@@ -35,10 +35,10 @@ class ItemPedidoInline(StackedInline):
     model = ItemPedido
     extra = 0  # Número de linhas extras para novos itens
     fields = [
-        ('servico', 'item_de_servico'),  # Primeira linha
+        ('item_de_servico',),  # Primeira linha
         ('descricao', 'quantidade', 'preco_total'),   # Segunda linha
     ]
-    autocomplete_fields = ('servico', 'item_de_servico')
+    autocomplete_fields = ('item_de_servico',)
     readonly_fields = ('preco_total',)
 
 
@@ -222,8 +222,8 @@ class PedidoAdmin(ModelAdmin):
 # Configuração do modelo ItemPedido no Admin
 @admin.register(ItemPedido)
 class ItemPedidoAdmin(ModelAdmin):
-    list_display = ('pedido', 'servico', 'item_de_servico', 'quantidade', 'preco_total')
-    search_fields = ('pedido__id', 'servico__nome', 'item_de_servico__nome')
+    list_display = ('pedido', 'item_de_servico', 'quantidade', 'preco_total')
+    search_fields = ('pedido__id', 'item_de_servico__nome')
     list_filter = ('servico',)
     readonly_fields = ('preco_total',)
-    autocomplete_fields = ('servico', 'item_de_servico')
+    autocomplete_fields = ('item_de_servico',)
