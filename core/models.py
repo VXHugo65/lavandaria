@@ -88,7 +88,7 @@ class Cliente(models.Model):
     endereco = models.TextField(null=True, blank=True)
 
     def __str__(self):
-        return self.nome
+        return f"{self.nome} - {self.telefone}"
 
 
 # Modelo para Pedidos
