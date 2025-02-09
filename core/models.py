@@ -80,7 +80,7 @@ class Cliente(models.Model):
     Representa um cliente do sistema.
     """
     nome = models.CharField(max_length=255)
-    telefone = models.CharField(max_length=20, unique=True)
+    telefone = models.CharField(max_length=20, null=True, blank=True)
     endereco = models.TextField(null=True, blank=True)
 
     def __str__(self):
@@ -95,6 +95,7 @@ class Pedido(models.Model):
     STATUS_CHOICES = [
         ('pendente', 'Pendente'),
         ('pronto', 'Pronto'),
+        ('entregue', 'Entregue'),
     ]
     METODO_PAGAMENTO_CHOICES = [
         ('numerario', 'Numerário'),
@@ -128,28 +129,12 @@ class ItemPedido(models.Model):
     Representa um item incluído em um pedido.
     """
 
-    CORES_CHOICES = [
-        ('branco', 'Branco'),
-        ('preto', 'Preto'),
-        ('azul', 'Azul'),
-        ('vermelho', 'Vermelho'),
-        ('verde', 'Verde'),
-        ('amarelo', 'Amarelo'),
-        ('laranja', 'Laranja'),
-        ('roxo', 'Roxo'),
-        ('rosa', 'Rosa'),
-        ('castanho', 'Castanho'),
-        ('cinza', 'Cinza'),
-    ]
-
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='itens')
-    servico = models.ForeignKey(Servico, on_delete=models.CASCADE, related_name='itens')
-    item_de_servico = models.ForeignKey(ItemServico, on_delete=models.SET_NULL, related_name='itens', null=True,
-                                        blank=True)
+    servico = models.ForeignKey(Servico, on_delete=models.CASCADE, related_name='itens', null=True, blank=True)
+    item_de_servico = models.ForeignKey(ItemServico, on_delete=models.SET_NULL, related_name='itens', null=True, blank=True)
     quantidade = models.PositiveIntegerField()
     preco_total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    cor = models.CharField(max_length=20, choices=CORES_CHOICES)
-    descricao = models.TextField(blank=True, null=True)
+    descricao = models.CharField(max_length=255, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         if self.item_de_servico and self.quantidade:

@@ -1,7 +1,6 @@
 from django.contrib import admin
-from unfold.admin import ModelAdmin, TabularInline
+from unfold.admin import ModelAdmin, TabularInline, StackedInline
 from .models import Lavandaria, ItemServico, Servico, Cliente, Pedido, ItemPedido, Funcionario
-from django.urls import reverse
 from django.utils.html import format_html
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
@@ -11,7 +10,8 @@ from django.contrib import messages
 import requests
 import json
 from django.urls import reverse
-
+from import_export.admin import ImportExportModelAdmin
+from unfold.contrib.import_export.forms import ExportForm, ImportForm, SelectableFieldsExportForm
 
 admin.site.unregister(Group)
 admin.site.unregister(User)
@@ -31,10 +31,14 @@ class GroupAdmin(BaseGroupAdmin, ModelAdmin):
 
 
 # Inline para gerenciar os itens de pedido diretamente no pedido
-class ItemPedidoInline(TabularInline):
+class ItemPedidoInline(StackedInline):
     model = ItemPedido
     extra = 0  # Número de linhas extras para novos itens
-    fields = ('servico', 'item_de_servico', 'cor', 'quantidade', 'preco_total')
+    fields = [
+        ('servico', 'item_de_servico'),  # Primeira linha
+        ('descricao', 'quantidade', 'preco_total'),   # Segunda linha
+    ]
+    autocomplete_fields = ('servico', 'item_de_servico')
     readonly_fields = ('preco_total',)
 
 
@@ -53,7 +57,9 @@ class LavandariaAdmin(ModelAdmin):
 
 # Configuração do modelo Cliente no Admin
 @admin.register(Cliente)
-class ClienteAdmin(ModelAdmin):
+class ClienteAdmin(ModelAdmin, ImportExportModelAdmin):
+    import_form_class = ImportForm
+    export_form_class = ExportForm
     list_display = ('nome', 'telefone', 'endereco')
     search_fields = ('nome', 'telefone')
 
@@ -65,19 +71,15 @@ class FuncionarioAdmin(ModelAdmin):
     search_fields = ('user__username', 'telefone', 'lavandaria__nome')
     list_filter = ('grupo',)
 
-    # def get_form(self, request, obj=None, **kwargs):
-    #     form = super().get_form(request, obj, **kwargs)
-    #     # Filtra usuários que ainda não são funcionários
-    #     form.base_fields['user'].queryset = User.objects.filter(funcionario__isnull=True)
-    #     return form
-
 
 # Configuração do modelo ItemServico no Admin
 @admin.register(ItemServico)
-class ItemServicoAdmin(ModelAdmin):
+class ItemServicoAdmin(ModelAdmin, ImportExportModelAdmin):
     list_display = ('nome', 'preco_base', 'disponivel')
     search_fields = ('nome',)
     list_filter = ('disponivel',)
+    import_form_class = ImportForm
+    export_form_class = ExportForm
 
 
 # Configuração do modelo Servico no Admin
@@ -153,6 +155,7 @@ class PedidoAdmin(ModelAdmin):
         ('', {'fields': ('pago', 'metodo_pagamento')}),
     )
     readonly_fields = ('total', 'criado_em', 'funcionario', 'lavandaria')
+    autocomplete_fields = ('cliente',)
     inlines = [ItemPedidoInline]
 
     def save_model(self, request, obj, form, change):
@@ -223,4 +226,4 @@ class ItemPedidoAdmin(ModelAdmin):
     search_fields = ('pedido__id', 'servico__nome', 'item_de_servico__nome')
     list_filter = ('servico',)
     readonly_fields = ('preco_total',)
-
+    autocomplete_fields = ('servico', 'item_de_servico')

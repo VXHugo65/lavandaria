@@ -1,28 +1,44 @@
-======================================
-          POWER WASHING, LDA
-======================================
+
+POWER WASHING, LDA
 401426310
-{{ pedido.lavandaria.nome }}
 {{ pedido.lavandaria.endereco }}
-Cel.: {{ pedido.lavandaria.telefone }}
+Cel.: 872130130 / 856869331
 
-Pedido: N.{{ pedido.id }}
 Cli.: {{ pedido.cliente.nome }}
-{{ pedido.cliente.telefone }}
-Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+      {{ pedido.cliente.telefone }}
+      {{ pedido.cliente.endereco }}
 
-- - - - - - - - - - - - - - - - - - - -
-Itens do Pedido
-- - - - - - - - - - - - - - - - - - - -
+{% if pedido.pago %}
+VD                                                 N.{{pedido.id}}
+{% else %}
+Factura Nao Paga
+{% endif %}
+Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+Moeda: MT
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+*So aceitamos devolucao dentro de 24h
+ e o artigo nao deve ter sido usado*
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Descricao              quant.              Total
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for item in pedido.itens.all %}
-  {{ item.quantidade }}x {{ item.item_de_servico.nome }} ({{ item.cor }})
-  {{ item.preco_total }} MZN
+{{ item.item_de_servico.nome }}                    {{ item.quantidade }}                 {{ item.preco_total }}
+{{ item.descricao }}
 {% endfor %}
-- - - - - - - - - - - - - - - - - - - -
-Total: {{ pedido.total }} MZN
-Pago: {{ pedido.pago|yesno:"Sim,Não" }}
-Método de Pagamento: {{ pedido.get_metodo_pagamento_display }}
-Estado: {{ pedido.get_status_display }}
-======================================
-Obrigado!
-======================================
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Total:                                     {{ pedido.total }}
+MP: {{ pedido.get_metodo_pagamento_display }}
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+                     IVA INCLUSO
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+*Termos e condicoes*:
+Nao nos responsabilizamos por artigos
+com ma qualidade ou nao levantados
+num prazo de 30 dias, sendo este
+sujeito a multa de 100% do valor.
+Em caso de dano, perda do artigo
+podera indemnizar-se ate 10x.
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Vendedor: {{ pedido.funcionario.user.username }}
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
