@@ -56,6 +56,10 @@ class ItemServico(models.Model):
     preco_base = models.DecimalField(max_digits=10, decimal_places=2)
     disponivel = models.BooleanField(default=True)
 
+    class Meta:
+        verbose_name = "Artigo"  # Nome no singular
+        verbose_name_plural = "Artigos"  # Nome no plural
+
     def __str__(self):
         return self.nome
 
@@ -130,8 +134,8 @@ class ItemPedido(models.Model):
     """
 
     pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name='itens')
-    servico = models.ForeignKey(Servico, on_delete=models.CASCADE, related_name='itens', null=True, blank=True)
-    item_de_servico = models.ForeignKey(ItemServico, on_delete=models.SET_NULL, related_name='itens', null=True, blank=True)
+    servico = models.ForeignKey(Servico, on_delete=models.SET_NULL, related_name='itens', null=True, blank=True)
+    item_de_servico = models.ForeignKey(ItemServico, on_delete=models.SET_NULL, related_name='itens', null=True, blank=True, verbose_name='Artigo')
     quantidade = models.PositiveIntegerField()
     preco_total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     descricao = models.CharField(max_length=255, blank=True, null=True)
