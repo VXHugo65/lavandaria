@@ -187,7 +187,7 @@ UNFOLD = {
                 "items": [
 
                     {
-                        "title": _("Laundry"),
+                        "title": _("Lavandaria"),
                         "icon": "store",  # Supported icon set: https://fonts.google.com/icons
                         "link": reverse_lazy("admin:core_lavandaria_changelist"),  # Link para a lista de Suppliers
                         "permission": lambda request: request.user.has_perm("core.view_lavandaria"),
@@ -199,25 +199,19 @@ UNFOLD = {
                         "permission": lambda request: request.user.has_perm("core.view_funcionario"),
                     },
                     {
-                        "title": _("Services"),
+                        "title": _("Artigos"),
                         "icon": "dry_cleaning",  # Supported icon set: https://fonts.google.com/icons
-                        "link": reverse_lazy("admin:core_servico_changelist"),  # Link para a lista de Customers
-                        "permission": lambda request: request.user.has_perm("core.view_servico"),
-                    },
-                    {
-                        "title": _("Items"),
-                        "icon": "category",  # Supported icon set: https://fonts.google.com/icons
                         "link": reverse_lazy("admin:core_itemservico_changelist"),  # Link para a lista de Customers
                         "permission": lambda request: request.user.has_perm("core.view_itemservico"),
                     },
                     {
-                        "title": _("Customers"),
+                        "title": _("Clientes"),
                         "icon": "handshake",  # Supported icon set: https://fonts.google.com/icons
                         "link": reverse_lazy("admin:core_cliente_changelist"),  # Link para a lista de Customers
                         "permission": lambda request: request.user.has_perm("core.view_cliente"),
                     },
                     {
-                        "title": _("Orders"),
+                        "title": _("Pedidos"),
                         "icon": "shopping_cart",  # Supported icon set: https://fonts.google.com/icons
                         "link": reverse_lazy("admin:core_pedido_changelist"),  # Link para a lista de Customers
                         "permission": lambda request: request.user.has_perm("core.view_pedido"),
