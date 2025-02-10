@@ -38,7 +38,8 @@ def imprimir_recibo_imagem(request, pedido_id):
 
     # Ajuste do tamanho da fonte e cálculo da altura
     try:
-        font = ImageFont.truetype(font_path, 19)
+        # font = ImageFont.truetype(font_path, 19)
+        font = ImageFont.load_default(size=18)
     except IOError:
         font = ImageFont.load_default(size=21)
 
