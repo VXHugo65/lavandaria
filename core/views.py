@@ -11,6 +11,8 @@ from django.utils.html import format_html
 from PIL import Image, ImageDraw, ImageFont
 import io
 import base64
+import os
+from django.conf import settings
 
 
 # Calcular a data inicial e o intervalo de 7 dias
@@ -27,15 +29,18 @@ datas_intervalo = [(data_inicial + timedelta(days=i)) for i in range(7)]
 #     return response
 
 
+font_path = os.path.join(settings.BASE_DIR, "static/font/CourierPrime-Regular.ttf")
+
+
 def imprimir_recibo_imagem(request, pedido_id):
     pedido = get_object_or_404(Pedido, id=pedido_id)
     recibo_texto = render_to_string('core/recibo_termico.txt', {'pedido': pedido})
 
     # Ajuste do tamanho da fonte e cálculo da altura
     try:
-        font = ImageFont.truetype("arial.ttf", 21)
+        font = ImageFont.truetype(font_path, 17)
     except IOError:
-        font = ImageFont.load_default()
+        font = ImageFont.load_default(size=21)
 
     # Calcular a altura da imagem com base no texto
     largura = 400

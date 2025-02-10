@@ -9,7 +9,7 @@ Cli.: {{ pedido.cliente.nome }}
       {{ pedido.cliente.endereco }}
 
 {% if pedido.pago %}
-VD                                                 N.{{pedido.id}}
+VD                           N.{{pedido.id}}
 {% else %}
 Factura Nao Paga
 {% endif %}
@@ -19,17 +19,17 @@ Moeda: MT
 *So aceitamos devolucao dentro de 24h
  e o artigo nao deve ter sido usado*
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Descricao              quant.              Total
+Descricao         quant.         Total
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for item in pedido.itens.all %}
-{{ item.item_de_servico.nome }}                    {{ item.quantidade }}                 {{ item.preco_total }}
+{{ item.item_de_servico.nome }}             {{ item.quantidade }}           {{ item.preco_total }}
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Total:                                     {{ pedido.total }}
+Total:              {{ pedido.total }}
 MP: {{ pedido.get_metodo_pagamento_display }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                     IVA INCLUSO
+             IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 *Termos e condicoes*:
 Nao nos responsabilizamos por artigos
@@ -40,5 +40,4 @@ Em caso de dano, perda do artigo
 podera indemnizar-se ate 10x.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Vendedor: {{ pedido.funcionario.user.username }}
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
