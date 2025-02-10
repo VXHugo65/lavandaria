@@ -29,7 +29,7 @@ datas_intervalo = [(data_inicial + timedelta(days=i)) for i in range(7)]
 #     return response
 
 
-font_path = os.path.join(settings.BASE_DIR, "static/font/CourierPrime-Regular.ttf")
+font_path = os.path.join(settings.BASE_DIR, "static/font/Roboto.ttf")
 
 
 def imprimir_recibo_imagem(request, pedido_id):
@@ -38,7 +38,7 @@ def imprimir_recibo_imagem(request, pedido_id):
 
     # Ajuste do tamanho da fonte e cálculo da altura
     try:
-        font = ImageFont.load_default(size=21)
+        font = ImageFont.truetype(font_path, 17)
     except IOError:
         font = ImageFont.load_default(size=21)
 
