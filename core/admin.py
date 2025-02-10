@@ -39,7 +39,7 @@ class ItemPedidoInline(StackedInline):
         ('descricao', 'quantidade', 'preco_total'),   # Segunda linha
     ]
     autocomplete_fields = ('item_de_servico',)
-    # readonly_fields = ('preco_total',)
+    readonly_fields = ('preco_total',)
 
 
 # Configuração do modelo Lavandaria no Admin
