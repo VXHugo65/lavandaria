@@ -148,7 +148,7 @@ class PedidoAdmin(ModelAdmin):
     search_fields = ('cliente__nome', 'id')
     list_display_links = ('cliente', 'id')
     list_editable = ('status', 'pago')
-    list_filter = ('status', 'criado_em', 'pago')
+    list_filter = ('status', 'criado_em', 'pago', 'metodo_pagamento')
     fieldsets = (
         ('Detalhes do Pedido', {'fields': ('cliente', 'lavandaria', 'funcionario', 'status',)}),
         ('Totais e Datas', {'fields': ('total', 'criado_em')}),
