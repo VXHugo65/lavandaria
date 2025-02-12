@@ -146,7 +146,7 @@ def enviar_sms_mozesms(numero, mensagem):
 @admin.register(Pedido)
 class PedidoAdmin(ModelAdmin):
     list_display = ('id', 'cliente', 'criado_em', 'status', 'pago', 'total', 'botao_imprimir')
-    search_fields = ('cliente__nome', 'id')
+    search_fields = ('cliente__nome', 'cliente__telefone', 'id')
     list_display_links = ('cliente', 'id')
     list_editable = ('status', 'pago')
     list_filter = (
