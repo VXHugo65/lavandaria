@@ -11,7 +11,7 @@ Cli.: {{ pedido.cliente.nome }}
 {% if pedido.pago %}
 VD                           N.{{pedido.id}}
 {% else %}
-Factura Nao Paga             N.{{pedido.id}}
+Factura                      N.{{pedido.id}}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
 Moeda: MT
