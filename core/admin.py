@@ -158,7 +158,7 @@ class PedidoAdmin(ModelAdmin):
         ('Totais e Datas', {'fields': ('total', 'criado_em')}),
         ('', {'fields': ('pago', 'metodo_pagamento')}),
     )
-    readonly_fields = ('total', 'criado_em', 'funcionario', 'lavandaria')
+    readonly_fields = ('criado_em', 'funcionario', 'lavandaria')
     autocomplete_fields = ('cliente',)
     inlines = [ItemPedidoInline]
 
