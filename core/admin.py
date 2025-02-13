@@ -206,7 +206,7 @@ class PedidoAdmin(ModelAdmin):
 
         for pedido in queryset:
             if pedido.status == 'pronto' and hasattr(pedido.cliente, 'telefone'):
-                mensagem = f"Olá {pedido.cliente.nome}, seu pedido #{pedido.id} está pronto para retirada na lavandaria {pedido.lavandaria.nome}."
+                mensagem = f"Olá {pedido.cliente.nome}, o seu artigo #{pedido.id} está pronto, pode vir levantar na power washing {pedido.lavandaria.endereco}."
                 resposta = enviar_sms_mozesms(pedido.cliente.telefone, mensagem)
 
                 if resposta:
