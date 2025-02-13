@@ -222,7 +222,7 @@ def dashboard_callback(request, context):
             }),
 
             "table": {
-                "headers": ["Name", "Total orders", "Sales"],
+                "headers": ["Name", "Today's Orders", "Today's Sales"],
                 'rows': [
                     [lavandaria.nome, 
                      lavandaria.numero_pedidos, 
