@@ -5,7 +5,7 @@ from django.template.loader import render_to_string
 import json
 from django.db.models import Count, Sum, Q
 from django.db.models.functions import TruncDate
-from django.utils.timezone import now, timedelta
+from django.utils.timezone import now, timedelta, localtime
 from django.db import models
 from django.utils.html import format_html
 from PIL import Image, ImageDraw, ImageFont
@@ -14,6 +14,8 @@ import base64
 import os
 from django.conf import settings
 
+
+today = localtime().date()
 
 # Calcular a data inicial e o intervalo de 7 dias
 data_inicial = now().date() - timedelta(days=6)
@@ -158,9 +160,16 @@ def dashboard_callback(request, context):
     data_pedidos = [pedidos_dict.get(str(data), 0) for data in datas_intervalo]
     data_vendas = [vendas_dict.get(str(data), 0) for data in datas_intervalo]
 
+    # lavandarias = Lavandaria.objects.annotate(
+    #     numero_pedidos=Count('pedidos'),
+    #     total_vendas=Sum('pedidos__total', filter=models.Q(pedidos__pago=True))  # Somente pedidos pagos
+    # )
     lavandarias = Lavandaria.objects.annotate(
-        numero_pedidos=Count('pedidos'),
-        total_vendas=Sum('pedidos__total', filter=models.Q(pedidos__pago=True))  # Somente pedidos pagos
+        numero_pedidos=Count('pedidos', filter=models.Q(pedidos__criado_em__date=today)),
+        total_vendas=Sum(
+            'pedidos__total',
+            filter=models.Q(pedidos__criado_em__date=today, pedidos__pago=True)  # Apenas pedidos pagos
+        )
     )
 
     total_vendas = Pedido.objects.filter(pago=True).aggregate(Sum('total'))['total__sum']
@@ -215,7 +224,10 @@ def dashboard_callback(request, context):
             "table": {
                 "headers": ["Name", "Total orders", "Sales"],
                 'rows': [
-                    [lavandaria.nome, lavandaria.numero_pedidos, str(float(lavandaria.total_vendas or 0)) + " MZN"]
+                    [lavandaria.nome, 
+                     lavandaria.numero_pedidos, 
+                    f"{float(lavandaria.total_vendas or 0):,.2f} MZN"
+                    ]
                     for lavandaria in lavandarias
                 ]
             },
