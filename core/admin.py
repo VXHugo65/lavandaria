@@ -236,7 +236,7 @@ class ItemPedidoAdmin(ModelAdmin):
 
 @admin.register(Recibo)
 class ReciboAdmin(ModelAdmin):
-    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por', 'botao_imprimir')
+    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por')
     autocomplete_fields = ('pedido',)
     readonly_fields = ('emitido_em', 'criado_por')
 
