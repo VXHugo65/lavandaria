@@ -9,18 +9,19 @@ Cli.: {{ pedido.cliente.nome }}
       {{ pedido.cliente.endereco }}
 
 {% if pedido.pago %}
-VD                           N.{{pedido.id}}
+VD          N.{{pedido.id}}
 {% else %}
-Factura                      N.{{pedido.id}}
+Factura     N.{{pedido.id}}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
 Moeda: MT
 Total:              {{ pedido.total }}
+MP: {{ pedido.get_metodo_pagamento_display }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 *So aceitamos devolucao dentro de 24h
  e o artigo nao deve ter sido usado*
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Descricao              quant.              Total
+Descricao                 quant.                 Total
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for item in pedido.itens.all %}
 {{ item.item_de_servico.nome }}                {{ item.quantidade }}              {{ item.preco_total }}
@@ -28,9 +29,8 @@ Descricao              quant.              Total
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Total:              {{ pedido.total }}
-MP: {{ pedido.get_metodo_pagamento_display }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-             IVA INCLUSO
+                 IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 *Termos e condicoes*:
 Nao nos responsabilizamos por artigos
