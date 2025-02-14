@@ -216,6 +216,12 @@ UNFOLD = {
                         "link": reverse_lazy("admin:core_pedido_changelist"),  # Link para a lista de Customers
                         "permission": lambda request: request.user.has_perm("core.view_pedido"),
                     },
+                                        {
+                        "title": _("Recibos"),
+                        "icon": "receipt_long",  # Supported icon set: https://fonts.google.com/icons
+                        "link": reverse_lazy("admin:core_recibo_changelist"),  # Link para a lista de Customers
+                        "permission": lambda request: request.user.has_perm("core.view_recibo"),
+                    },
 
                 ]
             }
