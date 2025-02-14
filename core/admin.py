@@ -232,3 +232,43 @@ class ItemPedidoAdmin(ModelAdmin):
     list_filter = ('servico',)
     readonly_fields = ('preco_total',)
     autocomplete_fields = ('item_de_servico',)
+
+
+@admin.register(Recibo)
+class ReciboAdmin(ModelAdmin):
+    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por', 'botao_imprimir')
+    autocomplete_fields = ('pedido',)
+    readonly_fields = ('emitido_em', 'criado_por')
+
+    def save_model(self, request, obj, form, change):
+        try:
+            # Obtém o funcionário associado ao usuário logado
+            criado_por = Funcionario.objects.get(user=request.user)
+            obj.funcionario = criado_por
+
+            # Verifica se o funcionário tem uma lavandaria associada
+            if criado_por.lavandaria:
+                obj.lavandaria = criado_por.lavandaria
+            else:
+                raise ValueError("O funcionário logado não está associado a nenhuma lavandaria.")
+        except Funcionario.DoesNotExist:
+            raise ValueError("O usuário logado não está associado a nenhum funcionário.")
+
+        super(ReciboAdmin, self).save_model(request, obj, form, change)
+
+    def get_queryset(self, request):
+        qs = super(ReciboAdmin, self).get_queryset(request)
+        if request.user.is_superuser:
+            return qs
+
+        try:
+            # Obtém o funcionário associado ao usuário logado
+            criado_por = Funcionario.objects.get(user=request.user)
+
+            # Garante que o funcionário tenha uma lavandaria
+            if criado_por.lavandaria:
+                return qs.filter(lavandaria=criado_por.lavandaria)
+            else:
+                raise ValueError("O funcionário logado não está associado a nenhuma lavandaria.")
+        except Funcionario.DoesNotExist:
+            raise ValueError("O usuário logado não está associado a nenhum funcionário.")
