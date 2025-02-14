@@ -190,3 +190,28 @@ def criar_grupos_com_permissoes():
                 grupo.permissions.add(permissao)
 
         print(f"Permissões associadas ao grupo '{grupo_nome}': {permissoes_codigos}")
+
+
+class Recibo(models.Model):
+    """
+    Representa um recibo emitido para um pedido.
+    """
+
+    pedido = models.OneToOneField(Pedido, on_delete=models.CASCADE, related_name="recibo")
+    total_pago = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo_pagamento = models.CharField(max_length=20, choices=Pedido.METODO_PAGAMENTO_CHOICES)
+    emitido_em = models.DateTimeField(auto_now_add=True)
+    criado_por = models.ForeignKey(Funcionario, on_delete=models.SET_NULL, blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+
+        # Atualizar status do pedido
+        self.pedido.pago = True
+        self.pedido.status = "entregue"  # Atualiza o status para "entregue"
+        self.pedido.save()
+
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Recibo {self.id} - Pedido {self.pedido.id} - Total: {self.total_pago}"
+
