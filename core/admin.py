@@ -256,19 +256,4 @@ class ReciboAdmin(ModelAdmin):
 
         super(ReciboAdmin, self).save_model(request, obj, form, change)
 
-    def get_queryset(self, request):
-        qs = super(ReciboAdmin, self).get_queryset(request)
-        if request.user.is_superuser:
-            return qs
-
-        try:
-            # Obtém o funcionário associado ao usuário logado
-            criado_por = Funcionario.objects.get(user=request.user)
-
-            # Garante que o funcionário tenha uma lavandaria
-            if criado_por.lavandaria:
-                return qs.filter(lavandaria=criado_por.lavandaria)
-            else:
-                raise ValueError("O funcionário logado não está associado a nenhuma lavandaria.")
-        except Funcionario.DoesNotExist:
-            raise ValueError("O usuário logado não está associado a nenhum funcionário.")
+    
