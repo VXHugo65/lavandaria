@@ -236,9 +236,26 @@ class ItemPedidoAdmin(ModelAdmin):
 
 @admin.register(Recibo)
 class ReciboAdmin(ModelAdmin):
-    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por')
+    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por') 
     autocomplete_fields = ('pedido',)
     readonly_fields = ('emitido_em', 'criado_por')
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+
+        # Se for superusuário, retorna todos os recibos
+        if request.user.is_superuser:
+            return qs
+
+        # Caso contrário, filtra pela lavandaria do funcionário logado
+        try:
+            funcionario = Funcionario.objects.get(user=request.user)
+            if funcionario.lavandaria:
+                return qs.filter(lavandaria=funcionario.lavandaria)
+        except Funcionario.DoesNotExist:
+            return qs.none()  # Usuário sem funcionário associado não verá nada
+
+        return qs
 
     def save_model(self, request, obj, form, change):
         try:
