@@ -236,7 +236,7 @@ class ItemPedidoAdmin(ModelAdmin):
 
 @admin.register(Recibo)
 class ReciboAdmin(ModelAdmin):
-    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por')
+    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por', 'botao_imprimir')
     autocomplete_fields = ('pedido',)
     readonly_fields = ('emitido_em', 'criado_por')
 
@@ -254,6 +254,4 @@ class ReciboAdmin(ModelAdmin):
         except Funcionario.DoesNotExist:
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
-        super(ReciboAdmin, self).save_model(request, obj, form, change)
-
-    
+        super().save_model(request, obj, form, change)
