@@ -138,7 +138,7 @@ class ItemPedido(models.Model):
     item_de_servico = models.ForeignKey(ItemServico, on_delete=models.SET_NULL, related_name='itens', null=True, blank=True, verbose_name='Artigo')
     quantidade = models.PositiveIntegerField()
     preco_total = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
-    descricao = models.CharField(max_length=255, blank=True, null=True)
+    descricao = models.TextField(blank=True, null=True)
 
     def save(self, *args, **kwargs):
         if self.item_de_servico and self.quantidade:
