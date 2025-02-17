@@ -12,7 +12,7 @@ import json
 from django.urls import reverse
 from import_export.admin import ImportExportModelAdmin
 from unfold.contrib.import_export.forms import ExportForm, ImportForm, SelectableFieldsExportForm
-from unfold.contrib.filters.admin import RangeDateFilter
+from unfold.contrib.filters.admin import RangeDateFilter, RangeDateTimeFilter
 
 admin.site.unregister(Group)
 admin.site.unregister(User)
@@ -150,7 +150,7 @@ class PedidoAdmin(ModelAdmin):
     list_display_links = ('cliente', 'id')
     list_editable = ('status', 'pago')
     list_filter = (
-        'status', 'pago', ("criado_em", RangeDateFilter), 'metodo_pagamento'
+        'status', 'pago', ("criado_em", RangeDateTimeFilter), 'metodo_pagamento'
     )
     list_filter_submit = True
     fieldsets = (
