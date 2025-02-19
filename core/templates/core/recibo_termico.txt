@@ -6,7 +6,6 @@ Cel.: 872130130 / 856869331
 
 Cli.: {{ pedido.cliente.nome }}
       {{ pedido.cliente.telefone }}
-      {{ pedido.cliente.endereco }}
 
 {% if pedido.pago %}
 VD          N.{{pedido.id}}
