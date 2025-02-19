@@ -102,8 +102,8 @@ class Pedido(models.Model):
         ('entregue', 'Entregue'),
     ]
     METODO_PAGAMENTO_CHOICES = [
-        ('numerario', 'Numerário'),
-        ('pos', 'POS (Cartão)'),
+        ('numerario', 'Numerario'),
+        ('pos', 'POS (Cartao)'),
         ('conta_movel', 'Conta Movel'),
         ('mpesa', 'M-Pesa'),
         ('emola', 'e-Mola'),
