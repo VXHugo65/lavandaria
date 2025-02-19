@@ -14,9 +14,10 @@ VD          N.{{pedido.id}}
 Factura     N.{{pedido.id}}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
-Moeda: MT
 Total:              {{ pedido.total }}
+{% if pedido.pago %}
 MP: {{ pedido.get_metodo_pagamento_display }}
+{% endif %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 *So aceitamos devolucao dentro de 24h
  e o artigo nao deve ter sido usado*
@@ -28,7 +29,7 @@ Descricao                       quant.                        Total
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Total:              {{ pedido.total }}
+Total:                                                       {{ pedido.total }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                  IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
