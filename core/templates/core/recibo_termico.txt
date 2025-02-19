@@ -21,10 +21,10 @@ MP: {{ pedido.get_metodo_pagamento_display }}
 *So aceitamos devolucao dentro de 24h
  e o artigo nao deve ter sido usado*
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Descricao                       quant.                       Total
+Descricao                       quant.                        Total
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for item in pedido.itens.all %}
-{{ item.item_de_servico.nome|slice:":15"|ljust:15 }}        {{ item.quantidade|stringformat:"3d" }}                         {{ item.preco_total|stringformat:".2f" }}
+{{ item.item_de_servico.nome|slice:":16"|ljust:16 }}        {{ item.quantidade|stringformat:"3d" }}                          {{ item.preco_total|stringformat:".2f" }}
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
