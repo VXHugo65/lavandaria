@@ -1,5 +1,5 @@
 from django.contrib import admin
-from unfold.admin import ModelAdmin, TabularInline, StackedInline
+from unfold.admin import ModelAdmin, StackedInline
 from .models import Lavandaria, ItemServico, Servico, Cliente, Pedido, ItemPedido, Funcionario, Recibo
 from django.utils.html import format_html
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
@@ -11,11 +11,62 @@ import requests
 import json
 from django.urls import reverse
 from import_export.admin import ImportExportModelAdmin
-from unfold.contrib.import_export.forms import ExportForm, ImportForm, SelectableFieldsExportForm
-from unfold.contrib.filters.admin import RangeDateFilter, RangeDateTimeFilter
+from unfold.contrib.import_export.forms import ExportForm, ImportForm
+from unfold.contrib.filters.admin import RangeDateTimeFilter
+from django.template.loader import render_to_string
+from xhtml2pdf import pisa
+from io import BytesIO
+from django.http import HttpResponse
+from datetime import datetime
 
 admin.site.unregister(Group)
 admin.site.unregister(User)
+
+
+def gerar_relatorio_pdf(modeladmin, request, queryset):
+    """
+    Gera um relatório PDF dos pedidos selecionados no Django Admin.
+    """
+    # Criar dicionário para armazenar os totais por pedido
+    for pedido in queryset:
+        pedido.total_quantidade = sum(item.quantidade for item in pedido.itens.all())
+        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
+
+    # Calcular os totais gerais
+    total_quantidade = sum(pedido.total_quantidade for pedido in queryset)
+    total_valor = sum(pedido.total_valor for pedido in queryset)
+
+    # Obter o intervalo de datas, considerando os pedidos selecionados
+    if queryset.exists():
+        start_date = queryset.first().criado_em.strftime('%d/%m/%Y')
+        end_date = queryset.last().criado_em.strftime('%d/%m/%Y')
+    else:
+        start_date = end_date = datetime.today().strftime('%d/%m/%Y')
+
+    # Renderizar o HTML com os pedidos selecionados
+    html_string = render_to_string('core/relatorio_vendas.html', {
+        'pedidos': queryset,
+        'total_quantidade': total_quantidade,
+        'total_valor': total_valor,
+        'start_date': start_date,
+        'end_date': end_date
+    })
+
+    # Criar um buffer de memória para armazenar o PDF
+    buffer = BytesIO()
+    filename = f"relatorio_vendas_{start_date}_a_{end_date}.pdf"
+    pisa_status = pisa.CreatePDF(html_string, dest=buffer)
+
+    # Verificar se houve erro ao gerar o PDF
+    if pisa_status.err:
+        return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
+
+    # Criar a resposta HTTP para download
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    return response
 
 
 @admin.register(User)
@@ -219,7 +270,7 @@ class PedidoAdmin(ModelAdmin):
             messages.warning(request,
                              "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
 
-    actions = [enviar_sms_pedido_pronto]
+    actions = [enviar_sms_pedido_pronto, gerar_relatorio_pdf]
 
     enviar_sms_pedido_pronto.short_description = "Enviar mensagem de pedido pronto"
 
