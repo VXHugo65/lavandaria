@@ -171,6 +171,14 @@ def dashboard_callback(request, context):
             filter=models.Q(pedidos__criado_em__date=today, pedidos__pago=True)  # Apenas pedidos pagos
         )
     )
+    vendas_por_lavandaria = (
+        Pedido.objects
+        .filter(criado_em__date=today, pago=True)  # Apenas pedidos pagos
+        .select_related('lavandaria')  # Certifica que a relação está sendo carregada
+        .values('lavandaria_id', 'lavandaria__nome', 'metodo_pagamento')  # Evita erro de chave
+        .annotate(total_vendas=Sum('total'))  # Somar os totais
+        .order_by('lavandaria__nome', 'metodo_pagamento')  # Ordenação
+    )
 
     total_vendas = Pedido.objects.filter(pago=True).aggregate(Sum('total'))['total__sum']
 
@@ -222,15 +230,16 @@ def dashboard_callback(request, context):
             }),
 
             "table": {
-                "headers": ["Name", "Today's Orders", "Today's Sales"],
-                'rows': [
-                    [lavandaria.nome, 
-                     lavandaria.numero_pedidos, 
-                    f"{float(lavandaria.total_vendas or 0):,.2f} MZN"
+                "headers": ["Lavandaria", "Método de Pagamento", "Total Diário"],
+                "rows": [
+                    [
+                        venda.get("lavandaria__nome", "Desconhecida"),  # Evita erro caso esteja faltando
+                        venda.get("metodo_pagamento", "Indefinido").replace("_", " ").title(),
+                        f"{float(venda.get('total_vendas', 0) or 0):,.2f} MZN"
                     ]
-                    for lavandaria in lavandarias
+                    for venda in vendas_por_lavandaria
                 ]
-            },
+            }
         }
     )
     return context
