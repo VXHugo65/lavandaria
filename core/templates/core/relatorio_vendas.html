@@ -77,19 +77,17 @@
         <table class="table">
             <thead>
             <tr>
-                <th>ID</th>
                 <th>Item</th>
                 <th>Quant.</th>
-                <th>V.Bruto</th>
+                <th>Desc.</th>
             </tr>
             </thead>
             <tbody>
             {% for item in pedido.itens.all %}
                 <tr>
-                    <td>{{ item.item_de_servico.id }}</td>
                     <td>{{ item.item_de_servico.nome }}</td>
                     <td>{{ item.quantidade }} UN</td>
-                    <td>{{ item.preco_total }}</td>
+                    <td>{{ item.descricao }}</td>
                 </tr>
             {% endfor %}
             </tbody>
@@ -98,7 +96,6 @@
             <tr style="font-weight: bold; background: #f1f1f1;">
                 <td style="text-align: center;" colspan="2">Subtotal</td>
                 <td style="text-align: center;">{{ pedido.total_quantidade }} UN</td>
-                <td style="text-align: center;">{{ pedido.total_valor }}</td>
             </tr>
         </table>
     {% endfor %}
@@ -110,10 +107,6 @@
         <tr>
             <td><strong>Total de Itens</strong></td>
             <td>{{ total_quantidade }} UN</td>
-        </tr>
-        <tr>
-            <td><strong>Total Geral</strong></td>
-            <td>{{ total_valor }}</td>
         </tr>
     </table>
 </div>
