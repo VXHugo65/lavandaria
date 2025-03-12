@@ -96,7 +96,9 @@ class ItemPedidoInline(StackedInline):
 
 # Configuração do modelo Lavandaria no Admin
 @admin.register(Lavandaria)
-class LavandariaAdmin(ModelAdmin):
+class LavandariaAdmin(ModelAdmin, ImportExportModelAdmin):
+    import_form_class = ImportForm
+    export_form_class = ExportForm
     list_display = ('nome', 'endereco', 'telefone', 'criado_em')
     search_fields = ('nome', 'telefone')
     list_filter = ('criado_em',)
@@ -118,7 +120,9 @@ class ClienteAdmin(ModelAdmin, ImportExportModelAdmin):
 
 # Configuração do modelo Funcionario no Admin
 @admin.register(Funcionario)
-class FuncionarioAdmin(ModelAdmin):
+class FuncionarioAdmin(ModelAdmin, ImportExportModelAdmin):
+    import_form_class = ImportForm
+    export_form_class = ExportForm
     list_display = ('user', 'lavandaria', 'grupo', 'telefone')
     search_fields = ('user__username', 'telefone', 'lavandaria__nome')
     list_filter = ('grupo',)
