@@ -22,6 +22,7 @@ ALLOWED_HOSTS = ['*']
 
 CSRF_TRUSTED_ORIGINS = [
     "https://lavandaria-production.up.railway.app",
+    "https://laudrybox.up.railway.app"
 ]
 
 
