@@ -156,7 +156,7 @@ class ServicoAdmin(ModelAdmin):
 
 # Configuração do modelo Pedido no Admin
 API_URL = 'http://api.mozesms.com/bulk_json/v2/'
-BEARER_TOKEN = 'Bearer 2309:fI1aPs-MCF2CJ-nKkMQD-61cLGv'
+BEARER_TOKEN = 'Bearer 2374:zKNUpX-J4dao9-VEi60O-UeNqdN'
 SENDER = "ESHOP"
 
 
