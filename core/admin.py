@@ -165,7 +165,7 @@ def enviar_sms_mozesms(numero, mensagem):
     Envia um SMS usando a API Mozesms.
     """
     payload = {
-        'sender': 'ESHOP',
+        'sender': 'POWERWASH',
         'messages': [{
             'number': numero,
             'text': mensagem,
