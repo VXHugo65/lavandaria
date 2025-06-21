@@ -76,7 +76,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
 
     # Separar pagos e não pagos
-    queryset_pagos = queryset.filter(pago=True).order_by('metodo_pagamento')
+    queryset_pagos = queryset.filter(pago=True).order_by('metodo_pagamento', 'criado_em')
     queryset_nao_pagos = queryset.filter(pago=False)
 
     # Calcular totais por pedido (pagos)
