@@ -18,6 +18,7 @@ from xhtml2pdf import pisa
 from io import BytesIO
 from django.http import HttpResponse
 from datetime import datetime
+from collections import defaultdict
 
 admin.site.unregister(Group)
 admin.site.unregister(User)
@@ -62,6 +63,60 @@ def gerar_relatorio_pdf(modeladmin, request, queryset):
         return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
 
     # Criar a resposta HTTP para download
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    return response
+
+
+def gerar_relatorio_financeiro(modeladmin, request, queryset):
+    """
+    Gera um relatório financeiro em PDF dos pedidos selecionados no Django Admin.
+    """
+
+    # Separar pagos e não pagos
+    queryset_pagos = queryset.filter(pago=True)
+    queryset_nao_pagos = queryset.filter(pago=False)
+
+    # Calcular totais por pedido (pagos)
+    for pedido in queryset_pagos:
+        pedido.total_quantidade = sum(item.quantidade for item in pedido.itens.all())
+        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
+
+    # Calcular totais por pedido (não pagos)
+    for pedido in queryset_nao_pagos:
+        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
+
+    # Totais gerais
+    total_quantidade = sum(pedido.total_quantidade for pedido in queryset_pagos)
+    total_valor = sum(pedido.total_valor for pedido in queryset_pagos)
+
+    # Datas do relatório
+    if queryset.exists():
+        start_date = queryset.order_by('criado_em').first().criado_em.strftime('%d/%m/%Y')
+        end_date = queryset.order_by('criado_em').last().criado_em.strftime('%d/%m/%Y')
+    else:
+        start_date = end_date = datetime.today().strftime('%d/%m/%Y')
+
+    # Renderizar o HTML para PDF
+    html_string = render_to_string('core/relatorio_financeiro.html', {
+        'pedidos_pagos': queryset_pagos,
+        'nao_pagos': [],
+        'total_quantidade': total_quantidade,
+        'total_valor': total_valor,
+        'start_date': start_date,
+        'end_date': end_date,
+    })
+
+    # Gerar o PDF
+    buffer = BytesIO()
+    filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
+    pisa_status = pisa.CreatePDF(html_string, dest=buffer)
+
+    if pisa_status.err:
+        return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
+
     buffer.seek(0)
     response = HttpResponse(buffer, content_type="application/pdf")
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
