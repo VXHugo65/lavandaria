@@ -2,7 +2,7 @@
 POWER WASHING, LDA
 401426310
 {{ pedido.lavandaria.endereco }}
-Cel.: 872130130 / 856869331
+Cel.: {{ pedido.lavandaria.telefone }}
 
 Cli.: {{ pedido.cliente.nome }}
       {{ pedido.cliente.telefone }}
