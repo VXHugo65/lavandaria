@@ -19,32 +19,34 @@ from io import BytesIO
 from django.http import HttpResponse
 from datetime import datetime
 from collections import defaultdict
+from django.utils import timezone
 
 admin.site.unregister(Group)
 admin.site.unregister(User)
 
 
 def gerar_relatorio_pdf(modeladmin, request, queryset):
-    """
-    Gera um relatório PDF dos pedidos selecionados no Django Admin.
-    """
-    # Criar dicionário para armazenar os totais por pedido
-    for pedido in queryset:
-        pedido.total_quantidade = sum(item.quantidade for item in pedido.itens.all())
-        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
+    # 🔥 Otimiza queryset para evitar N+1 queries
+    queryset = queryset.prefetch_related('itens')
 
-    # Calcular os totais gerais
+    # 🔥 Processa os totais por pedido
+    for pedido in queryset:
+        itens = pedido.itens.all()
+        pedido.total_quantidade = sum(item.quantidade for item in itens)
+        pedido.total_valor = sum(item.preco_total for item in itens)
+
+    # 🔥 Totais gerais
     total_quantidade = sum(pedido.total_quantidade for pedido in queryset)
     total_valor = sum(pedido.total_valor for pedido in queryset)
 
-    # Obter o intervalo de datas, considerando os pedidos selecionados
+    # 🔥 Datas do relatório
     if queryset.exists():
-        start_date = queryset.first().criado_em.strftime('%d/%m/%Y')
-        end_date = queryset.last().criado_em.strftime('%d/%m/%Y')
+        start_date = timezone.localtime(queryset.first().criado_em).strftime('%d/%m/%Y')
+        end_date = timezone.localtime(queryset.last().criado_em).strftime('%d/%m/%Y')
     else:
         start_date = end_date = datetime.today().strftime('%d/%m/%Y')
 
-    # Renderizar o HTML com os pedidos selecionados
+    # 🔥 Renderiza HTML
     html_string = render_to_string('core/relatorio_vendas.html', {
         'pedidos': queryset,
         'total_quantidade': total_quantidade,
@@ -53,20 +55,18 @@ def gerar_relatorio_pdf(modeladmin, request, queryset):
         'end_date': end_date
     })
 
-    # Criar um buffer de memória para armazenar o PDF
+    # 🔥 Cria PDF
     buffer = BytesIO()
     filename = f"relatorio_vendas_{start_date}_a_{end_date}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
 
-    # Verificar se houve erro ao gerar o PDF
+    # 🔥 Verifica erros
     if pisa_status.err:
         return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
 
-    # Criar a resposta HTTP para download
     buffer.seek(0)
     response = HttpResponse(buffer, content_type="application/pdf")
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
     return response
 
 
