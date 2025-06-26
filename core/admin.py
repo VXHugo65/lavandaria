@@ -173,7 +173,7 @@ class LavandariaAdmin(ModelAdmin, ImportExportModelAdmin):
 class ClienteAdmin(ModelAdmin, ImportExportModelAdmin):
     import_form_class = ImportForm
     export_form_class = ExportForm
-    list_display = ('nome', 'telefone', 'endereco')
+    list_display = ('id', 'nome', 'telefone', 'endereco')
     search_fields = ('nome', 'telefone')
 
 
