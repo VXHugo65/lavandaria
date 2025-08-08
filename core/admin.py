@@ -266,7 +266,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     list_display_links = ('cliente', 'id')
     list_editable = ('status', 'pago')
     list_filter = (
-        'status', 'pago', ("criado_em", RangeDateTimeFilter), 'metodo_pagamento', "funcionario" 
+        'status', 'pago', ("criado_em", RangeDateTimeFilter), 'metodo_pagamento'
     )
     list_filter_submit = True
     fieldsets = (
@@ -335,7 +335,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
             messages.warning(request,
                              "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
 
-    actions = [enviar_sms_pedido_pronto, gerar_relatorio_pdf, gerar_relatorio_financeiro]
+    actions = [enviar_sms_pedido_pronto, gerar_relatorio_pdf]
 
     enviar_sms_pedido_pronto.short_description = "Enviar mensagem de pedido pronto"
 
@@ -371,4 +371,5 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
