@@ -266,7 +266,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     list_display_links = ('cliente', 'id')
     list_editable = ('status', 'pago')
     list_filter = (
-        'status', 'pago', ("criado_em", RangeDateTimeFilter), 'metodo_pagamento'
+        'status', 'pago', ("criado_em", RangeDateTimeFilter), 'metodo_pagamento', ("data_pagamento", RangeDateTimeFilter)
     )
     list_filter_submit = True
     fieldsets = (
@@ -374,6 +374,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
