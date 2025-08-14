@@ -292,6 +292,9 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
         except Funcionario.DoesNotExist:
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
+        if form.cleaned_data.get('pago') and not obj.data_pagamento:
+            obj.data_pagamento = timezone.now()
+
         super(PedidoAdmin, self).save_model(request, obj, form, change)
 
     def get_queryset(self, request):
@@ -371,6 +374,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
