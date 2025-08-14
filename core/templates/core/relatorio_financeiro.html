@@ -103,7 +103,11 @@
 <!-- Cabeçalho -->
 <div class="header">
     <h6>POWER WASHING, LDA</h6>
-    <p>Consulta de Movimentos: ({{ start_date }} até {{ end_date }})</p>
+    <p>
+        Consulta de Movimentos: ({{ start_date }} até {{ end_date }})
+        <br>
+        {{ lavandaria }} - {{ lavandaria.endereco }}
+    </p>
     <hr>
 </div>
 
@@ -113,7 +117,8 @@
     <tr>
         <th>#Pedido</th>
         <th>Cliente</th>
-        <th>Data</th>
+        <th>Data de pedido</th>
+        <th>Data de pagamento</th>
         <th class="text-right">Valor</th>
     </tr>
     </thead>
@@ -134,6 +139,7 @@
                 <td>{{ pedido.id }}</td>
                 <td>{{ pedido.cliente.nome }}</td>
                 <td>{{ pedido.criado_em|date:"d/m/Y" }}</td>
+                <td>{{ pedido.data_pagamento|date:"d/m/Y" }}</td>
                 <td class="text-right">{{ pedido.total_valor|currency_mzn }}</td>
             </tr>
         {% endfor %}
