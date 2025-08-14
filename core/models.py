@@ -1,6 +1,7 @@
 from django.db import models
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.contenttypes.models import ContentType
+from django.utils import timezone
 
 
 # Modelo para Lavandarias
@@ -118,9 +119,16 @@ class Pedido(models.Model):
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     pago = models.BooleanField(default=False)
     metodo_pagamento = models.CharField(max_length=20, choices=METODO_PAGAMENTO_CHOICES)
+    data_pagamento = models.DateTimeField(null=True, blank=True)
 
     def atualizar_total(self):
         self.total = sum(item.preco_total for item in self.itens.all())
+        self.save()
+
+    def marcar_como_pago(self):
+        """Marca o pedido como pago e define a data de pagamento."""
+        self.pago = True
+        self.data_pagamento = timezone.now()
         self.save()
 
     def __str__(self):
@@ -214,4 +222,5 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido.id} - Total: {self.total_pago}"
+
 
