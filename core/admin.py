@@ -261,7 +261,7 @@ def enviar_sms_mozesms(numero, mensagem):
 class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     import_form_class = ImportForm
     export_form_class = ExportForm
-    list_display = ('id', 'cliente', 'criado_em', 'status', 'pago', 'total', 'botao_imprimir')
+    list_display = ('id', 'cliente', 'criado_em', 'data_pagamento', 'status', 'pago', 'total', 'botao_imprimir')
     search_fields = ('cliente__nome', 'cliente__telefone', 'id')
     list_display_links = ('cliente', 'id')
     list_editable = ('status', 'pago')
@@ -371,6 +371,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
