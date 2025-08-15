@@ -76,7 +76,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
 
     # Separar pagos e não pagos
-    queryset_pagos = queryset.filter(pago=True).order_by('metodo_pagamento', 'criado_em')
+    queryset_pagos = queryset.filter(pago=True).order_by('metodo_pagamento')
     queryset_nao_pagos = queryset.filter(pago=False)
 
     # Calcular totais por pedido (pagos)
@@ -94,13 +94,16 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
 
     # Datas do relatório
     if queryset.exists():
-        start_date = queryset.order_by('criado_em').first().criado_em.strftime('%d/%m/%Y')
-        end_date = queryset.order_by('criado_em').last().criado_em.strftime('%d/%m/%Y')
+        start_date = queryset.order_by('data_pagamento').first().data_pagamento.strftime('%d/%m/%Y')
+        end_date = queryset.order_by('data_pagamento').last().data_pagamento.strftime('%d/%m/%Y')
     else:
         start_date = end_date = datetime.today().strftime('%d/%m/%Y')
 
+    lavandaria = request.user.funcionario.lavandaria
+
     # Renderizar o HTML para PDF
     html_string = render_to_string('core/relatorio_financeiro.html', {
+        'lavandaria': lavandaria,
         'pedidos_pagos': queryset_pagos,
         'nao_pagos': [],
         'total_quantidade': total_quantidade,
@@ -374,6 +377,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
