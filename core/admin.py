@@ -212,37 +212,38 @@ class ServicoAdmin(ModelAdmin):
     )
 
 
-# Configuração do modelo Pedido no Admin
-API_URL = 'http://api.mozesms.com/bulk_json/v2/'
+API_URL = 'https://api.mozesms.com/v2/sms/bulk'
 BEARER_TOKEN = 'Bearer 2374:zKNUpX-J4dao9-VEi60O-UeNqdN'
-SENDER = "ESHOP"
-
+SENDER_ID = "ESHOP"
 
 def enviar_sms_mozesms(numero, mensagem):
     """
-    Envia um SMS usando a API Mozesms.
+    Envia um SMS usando a API Mozesms (nova versão).
     """
     payload = {
-        'sender': 'POWERWASH',
-        'messages': [{
-            'number': numero,
-            'text': mensagem,
-            'from': SENDER
-        }]
+        'sender_id': SENDER_ID,
+        'messages': [
+            {
+                'phone': numero,
+                'message': mensagem
+            }
+        ]
     }
-    headers = {'Authorization': BEARER_TOKEN}
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': BEARER_TOKEN
+    }
 
     try:
         response = requests.post(API_URL, json=payload, headers=headers)
 
         if response.status_code == 200:
             try:
-                # Carregar a resposta JSON (primeira parte)
-                json_resposta = json.loads(response.text.split('}{')[0] + '}')
+                json_resposta = response.json()
 
-                # Verificar sucesso na resposta
-                if json_resposta.get('success') and json_resposta.get('result', {}).get('success'):
-                    print("SMS enviado com sucesso!")
+                if json_resposta.get('success'):
+                    print("SMS enviado com sucesso!", json_resposta)
                     return True
                 else:
                     print("Erro ao enviar SMS:", json_resposta)
@@ -252,7 +253,7 @@ def enviar_sms_mozesms(numero, mensagem):
                 print(f"Erro ao processar a resposta JSON: {e}")
                 return False
         else:
-            print(f"Erro na requisição: {response.status_code}")
+            print(f"Erro na requisição: {response.status_code} - {response.text}")
             return False
 
     except requests.RequestException as e:
@@ -377,6 +378,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
