@@ -221,7 +221,7 @@ def enviar_sms_mozesms(numero, mensagem):
     Envia um SMS usando a API Mozesms (nova versão).
     """
     payload = {
-        'sender_id': SENDER_ID,
+        'sender_id': POWERWASH,
         'messages': [
             {
                 'phone': numero,
@@ -378,6 +378,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
