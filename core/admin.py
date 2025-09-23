@@ -214,7 +214,7 @@ class ServicoAdmin(ModelAdmin):
 
 API_URL = 'https://api.mozesms.com/v2/sms/bulk'
 BEARER_TOKEN = 'Bearer 2374:zKNUpX-J4dao9-VEi60O-UeNqdN'
-SENDER_ID = "ESHOP"
+SENDER_ID = "POWERWASH"
 
 def enviar_sms_mozesms(numero, mensagem):
     """
@@ -378,6 +378,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
