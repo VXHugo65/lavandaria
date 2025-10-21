@@ -36,6 +36,15 @@ font_path = os.path.join(settings.BASE_DIR, "static/font/Roboto.ttf")
 
 def imprimir_recibo_imagem(request, pedido_id):
     pedido = get_object_or_404(Pedido, id=pedido_id)
+
+    ultimos_pedidos = (
+        Pedido.objects
+        .filter(cliente=pedido.cliente)
+        .exclude(id=pedido.id)  # opcional, para não incluir o pedido atual
+        .order_by('-data_criacao')[:3]
+    )
+
+    
     recibo_texto = render_to_string('core/recibo_termico.txt', {'pedido': pedido})
 
     # Ajuste do tamanho da fonte e cálculo da altura
@@ -243,3 +252,4 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
