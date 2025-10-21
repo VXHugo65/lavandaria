@@ -37,14 +37,16 @@ font_path = os.path.join(settings.BASE_DIR, "static/font/Roboto.ttf")
 def imprimir_recibo_imagem(request, pedido_id):
     pedido = get_object_or_404(Pedido, id=pedido_id)
 
+    # Buscar todos os pedidos não pagos do mesmo cliente
     pedidos_nao_pagos = (
         Pedido.objects
-            .filter(cliente=pedido.cliente, pago=False)
-            .order_by('-criado_em')
+        .filter(cliente=pedido.cliente, pago=False)
+        .order_by('-criado_em')
     )
 
+    # Calcular o total em dívida
+    total_em_divida = pedidos_nao_pagos.aggregate(total=Sum('total'))['total'] or 0
 
-    
     recibo_texto = render_to_string('core/recibo_termico.txt', {'pedido': pedido})
 
     # Ajuste do tamanho da fonte e cálculo da altura
@@ -252,6 +254,7 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
 
