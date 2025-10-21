@@ -38,10 +38,9 @@ def imprimir_recibo_imagem(request, pedido_id):
     pedido = get_object_or_404(Pedido, id=pedido_id)
 
     pedidos_nao_pagos = (
-    Pedido.objects
-        .filter(cliente=pedido.cliente, pago=False)
-        .exclude(id=pedido.id)
-        .order_by('-criado_em')
+        Pedido.objects
+            .filter(cliente=pedido.cliente, pago=False)
+            .order_by('-criado_em')
     )
 
 
@@ -253,5 +252,6 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
