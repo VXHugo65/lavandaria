@@ -49,5 +49,9 @@ ID                           Data                                  Valor
 {% empty %}
 Nenhum pedido encontrado.
 {% endfor %}
+{% if total_em_divida %}
+Total: {{ total_em_divida }}
+{% endif %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 .
+
