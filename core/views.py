@@ -47,7 +47,11 @@ def imprimir_recibo_imagem(request, pedido_id):
     # Calcular o total em dívida
     total_em_divida = pedidos_nao_pagos.aggregate(total=Sum('total'))['total'] or 0
 
-    recibo_texto = render_to_string('core/recibo_termico.txt', {'pedido': pedido})
+    recibo_texto = render_to_string('core/recibo_termico.txt', {
+        'pedido': pedido,
+        'pedidos_nao_pagos': pedidos_nao_pagos,
+        'total_em_divida': total_em_divida
+    })
 
     # Ajuste do tamanho da fonte e cálculo da altura
     try:
@@ -254,6 +258,7 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
 
