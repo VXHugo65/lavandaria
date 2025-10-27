@@ -25,7 +25,7 @@ class Funcionario(models.Model):
     """
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='funcionario')
     lavandaria = models.ForeignKey(Lavandaria, on_delete=models.CASCADE, related_name='funcionarios')
-    telefone = models.CharField(max_length=20, unique=True)
+    telefone = models.CharField(max_length=20, blank=True, null=True)
     grupo = models.CharField(
         max_length=255,
         choices=[('gerente', 'Gerente'), ('caixa', 'Caixa')],
@@ -222,5 +222,6 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido.id} - Total: {self.total_pago}"
+
 
 
