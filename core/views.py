@@ -42,7 +42,7 @@ def imprimir_recibo_imagem(request, pedido_id):
         Pedido.objects
         .filter(cliente=pedido.cliente, pago=False)
         .order_by('-criado_em')
-    )
+    )[:3]
 
     # Calcular o total em dívida
     total_em_divida = pedidos_nao_pagos.aggregate(total=Sum('total'))['total'] or 0
@@ -258,6 +258,7 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
 
