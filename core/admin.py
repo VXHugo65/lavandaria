@@ -157,7 +157,7 @@ class ItemPedidoInline(StackedInline):
     readonly_fields = ('preco_total',)
 
     def has_add_permission(self, request, obj=None):
-        # Permite adicionar novos itens apenas se o pedido não foi salvo ainda
+        # Só pode adicionar itens se o pedido ainda não foi salvo
         if obj and obj.pk:
             return False
         return super().has_add_permission(request, obj)
@@ -170,10 +170,10 @@ class ItemPedidoInline(StackedInline):
 
     def get_readonly_fields(self, request, obj=None):
         if obj and obj.pk:
-            # Torna todos os campos readonly quando o pedido existe
-            return [field.name for field in self.model._meta.fields] + list(self.readonly_fields)
+            # Todos os campos se tornam somente leitura após o pedido ser salvo
+            readonly = [f.name for f in self.model._meta.fields if f.name != 'id']
+            return readonly + list(self.readonly_fields)
         return self.readonly_fields
-
 
 
 # Configuração do modelo Lavandaria no Admin
@@ -398,6 +398,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
