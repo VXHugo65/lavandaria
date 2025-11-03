@@ -62,7 +62,11 @@ class ItemServico(models.Model):
         verbose_name_plural = "Artigos"  # Nome no plural
 
     def __str__(self):
-        return self.nome
+        return f"{self.nome} - {self.get_preco_formatado()}"
+
+    def get_preco_formatado(self):
+        """Retorna o preço formatado em Reais"""
+        return f"MT: {self.preco_base:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
 
 
 # Modelo para Serviços disponíveis na Lavandaria
@@ -222,6 +226,7 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido.id} - Total: {self.total_pago}"
+
 
 
 
