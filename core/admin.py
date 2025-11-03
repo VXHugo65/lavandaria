@@ -154,7 +154,7 @@ class ItemPedidoInline(StackedInline):
         ('descricao', 'quantidade', 'preco_total'),
     ]
     autocomplete_fields = ('item_de_servico',)
-    
+    readonly_fields = ('preco_total',)
 
     def has_add_permission(self, request, obj=None):
         # Permite adicionar novos itens apenas se o pedido não foi salvo ainda
@@ -398,6 +398,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
