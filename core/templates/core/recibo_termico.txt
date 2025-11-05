@@ -44,6 +44,7 @@ Vendedor: {{ pedido.funcionario.user.username }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 ID                           Data                                  Valor
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Artigos não levantados:
 {% for pedido in pedidos_nao_pagos %}
 {{ pedido.id }}          {{ pedido.criado_em|date:"d/m/Y" }}                         {{ pedido.total }}
 {% empty %}
@@ -55,5 +56,6 @@ Total: {{ total_em_divida }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 .
+
 
 
