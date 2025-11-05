@@ -145,7 +145,7 @@ class GroupAdmin(BaseGroupAdmin, ModelAdmin, ImportExportModelAdmin):
 
 
 # Inline para gerenciar os itens de pedido diretamente no pedido
-# Inline para gerenciar os itens de pedido diretamente no pedido
+
 class ItemPedidoInline(StackedInline):
     model = ItemPedido
     extra = 0
@@ -156,24 +156,36 @@ class ItemPedidoInline(StackedInline):
     autocomplete_fields = ('item_de_servico',)
     readonly_fields = ('preco_total',)
 
+    def get_readonly_fields(self, request, obj=None):
+        """
+        Torna todos os campos readonly exceto 'descricao' quando o pedido já foi criado.
+        """
+        if obj and obj.pk:  # Se o pedido já existe no banco
+            # Pega todos os campos do modelo
+            all_fields = [field.name for field in self.model._meta.fields]
+            # Remove 'descricao' da lista de campos readonly
+            readonly_fields = [field for field in all_fields if field != 'descricao']
+            # Adiciona os campos readonly padrão
+            readonly_fields.extend(self.readonly_fields)
+            return readonly_fields
+        return self.readonly_fields
+
     def has_add_permission(self, request, obj=None):
-        # Só pode adicionar itens se o pedido ainda não foi salvo
+        """
+        Impede adicionar novos itens se o pedido já foi criado.
+        """
         if obj and obj.pk:
             return False
         return super().has_add_permission(request, obj)
 
     def has_delete_permission(self, request, obj=None):
-        # Impede deletar itens se o pedido já foi salvo
+        """
+        Impede deletar itens se o pedido já foi criado.
+        """
         if obj and obj.pk:
             return False
         return super().has_delete_permission(request, obj)
 
-    def get_readonly_fields(self, request, obj=None):
-        if obj and obj.pk:
-            # Todos os campos se tornam somente leitura após o pedido ser salvo
-            readonly = [f.name for f in self.model._meta.fields if f.name != 'id']
-            return readonly + list(self.readonly_fields)
-        return self.readonly_fields
 
 
 # Configuração do modelo Lavandaria no Admin
@@ -398,6 +410,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
