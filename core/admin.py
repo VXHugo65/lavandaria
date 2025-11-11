@@ -300,9 +300,10 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     list_display = ('id', 'cliente', 'criado_em', 'data_pagamento', 'status', 'pago', 'total', 'botao_imprimir')
     search_fields = ('cliente__nome', 'cliente__telefone', 'id')
     list_display_links = ('cliente', 'id')
-    list_editable = ('status', 'pago')
+    list_editable = ('pago',)  # Remove status da list_editable para evitar mudanças diretas
     list_filter = (
-        'status', 'pago', ("data_pagamento", RangeDateTimeFilter), 'metodo_pagamento', ("criado_em", RangeDateTimeFilter)
+        'status', 'pago', ("data_pagamento", RangeDateTimeFilter), 'metodo_pagamento',
+        ("criado_em", RangeDateTimeFilter)
     )
     list_filter_submit = True
     fieldsets = (
@@ -314,13 +315,69 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     autocomplete_fields = ('cliente',)
     inlines = [ItemPedidoInline]
 
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+
+        if obj and obj.pk:
+            self._restrict_status_choices(form, obj)
+
+        return form
+
+    def _restrict_status_choices(self, form, obj):
+        """Restringe as choices do status baseado no estado atual"""
+        if 'status' in form.base_fields:
+            current_status = obj.status
+
+            # CORREÇÃO: Fluxo sequencial estrito
+            status_flow = {
+                'pendente': ['pendente', 'pronto'],  # Pendente só pode ir para Pronto
+                'pronto': ['pronto', 'entregue'],  # Pronto só pode ir para Entregue
+                'entregue': ['entregue']  # Entregue não pode mudar
+            }
+
+            allowed_statuses = status_flow.get(current_status, [current_status])
+            choices = [choice for choice in form.base_fields['status'].choices
+                       if choice[0] in allowed_statuses]
+
+            form.base_fields['status'].choices = choices
+
+            # Se só tem uma opção, desabilita o campo
+            if len(allowed_statuses) == 1:
+                form.base_fields['status'].disabled = True
+
     def save_model(self, request, obj, form, change):
+        if change and obj.pk:
+            # Obtém o estado anterior do pedido
+            try:
+                original_status = Pedido.objects.get(pk=obj.pk).status
+                new_status = form.cleaned_data.get('status')
+
+                # CORREÇÃO: Transições válidas estritamente sequenciais
+                valid_transitions = {
+                    'pendente': ['pronto'],  # Pendente → Pronto (apenas)
+                    'pronto': ['entregue'],  # Pronto → Entregue (apenas)
+                    'entregue': []  # Entregue → Nada (não pode mudar)
+                }
+
+                if new_status != original_status:
+                    if new_status not in valid_transitions.get(original_status, []):
+                        messages.error(
+                            request,
+                            f"Não é possível alterar o status de '{original_status}' para '{new_status}'. "
+                            f"Transição permitida: {', '.join(valid_transitions[original_status]) or 'Nenhuma'}"
+                        )
+                        # Restaura o status original
+                        obj.status = original_status
+                        return  # Impede a mudança de status inválida
+
+            except Pedido.DoesNotExist:
+                pass  # Pedido novo, não precisa validar
+
+        # Resto do save_model original
         try:
-            # Obtém o funcionário associado ao usuário logado
             funcionario = Funcionario.objects.get(user=request.user)
             obj.funcionario = funcionario
 
-            # Verifica se o funcionário tem uma lavandaria associada
             if funcionario.lavandaria:
                 obj.lavandaria = funcionario.lavandaria
             else:
@@ -356,6 +413,48 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
 
     botao_imprimir.short_description = "Imprimir Recibo"
 
+    # Ações customizadas para avançar status de forma controlada
+    def marcar_como_pronto(self, request, queryset):
+        """Marca pedidos selecionados como pronto (apenas se estiverem pendentes)"""
+        pedidos_processados = 0
+        for pedido in queryset:
+            if pedido.status == 'pendente':
+                pedido.status = 'pronto'
+                pedido.save()
+                pedidos_processados += 1
+            else:
+                messages.warning(
+                    request,
+                    f"Pedido {pedido.id} não pode ser marcado como pronto. Status atual: {pedido.status}"
+                )
+
+        if pedidos_processados:
+            messages.success(request, f"{pedidos_processados} pedidos marcados como pronto.")
+        else:
+            messages.warning(request, "Nenhum pedido pôde ser processado.")
+
+    def marcar_como_entregue(self, request, queryset):
+        """Marca pedidos selecionados como entregue (apenas se estiverem prontos)"""
+        pedidos_processados = 0
+        for pedido in queryset:
+            if pedido.status == 'pronto':
+                pedido.status = 'entregue'
+                pedido.save()
+                pedidos_processados += 1
+            else:
+                messages.warning(
+                    request,
+                    f"Pedido {pedido.id} não pode ser marcado como entregue. Status atual: {pedido.status}"
+                )
+
+        if pedidos_processados:
+            messages.success(request, f"{pedidos_processados} pedidos marcados como entregue.")
+        else:
+            messages.warning(request, "Nenhum pedido pôde ser processado.")
+
+    marcar_como_pronto.short_description = "Marcar como Pronto (apenas pendentes)"
+    marcar_como_entregue.short_description = "Marcar como Entregue (apens prontos)"
+
     def enviar_sms_pedido_pronto(self, request, queryset):
         pedidos_notificados = 0
 
@@ -374,7 +473,14 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
             messages.warning(request,
                              "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
 
-    actions = [enviar_sms_pedido_pronto, gerar_relatorio_pdf, gerar_relatorio_financeiro]
+    # Atualiza as actions para incluir as novas funções
+    actions = [
+        marcar_como_pronto,
+        marcar_como_entregue,
+        enviar_sms_pedido_pronto,
+        gerar_relatorio_pdf,
+        gerar_relatorio_financeiro
+    ]
 
     enviar_sms_pedido_pronto.short_description = "Enviar mensagem de pedido pronto"
 
@@ -391,7 +497,7 @@ class ItemPedidoAdmin(ModelAdmin):
 
 @admin.register(Recibo)
 class ReciboAdmin(ModelAdmin):
-    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por') 
+    list_display = ('id', 'pedido', 'total_pago', 'emitido_em', 'metodo_pagamento', 'criado_por')
     autocomplete_fields = ('pedido',)
     readonly_fields = ('emitido_em', 'criado_por')
 
@@ -410,6 +516,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
