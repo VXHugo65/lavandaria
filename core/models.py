@@ -97,15 +97,24 @@ class Cliente(models.Model):
 
 
 # Modelo para Pedidos
+from django.db import models
+from django.contrib.auth.models import User, Group, Permission
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+
+
 class Pedido(models.Model):
     """
     Representa um pedido associado a uma lavandaria e cliente.
+    Com fluxo sequencial de estados: pendente → pronto → entregue
     """
+
     STATUS_CHOICES = [
         ('pendente', 'Pendente'),
         ('pronto', 'Pronto'),
         ('entregue', 'Entregue'),
     ]
+
     METODO_PAGAMENTO_CHOICES = [
         ('numerario', 'Numerario'),
         ('pos', 'POS (Cartao)'),
@@ -115,29 +124,114 @@ class Pedido(models.Model):
         ('outro', 'Outro'),
     ]
 
-    cliente = models.ForeignKey(Cliente, on_delete=models.CASCADE, related_name='pedidos')
-    lavandaria = models.ForeignKey(Lavandaria, on_delete=models.CASCADE, related_name='pedidos')
-    funcionario = models.ForeignKey(Funcionario, on_delete=models.SET_NULL, related_name='pedidos', null=True, blank=True)
+    # Relações
+    cliente = models.ForeignKey('Cliente', on_delete=models.CASCADE, related_name='pedidos')
+    lavandaria = models.ForeignKey('Lavandaria', on_delete=models.CASCADE, related_name='pedidos')
+    funcionario = models.ForeignKey('Funcionario', on_delete=models.SET_NULL, related_name='pedidos', null=True,
+                                    blank=True)
+
+    # Status e datas
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
     criado_em = models.DateTimeField(auto_now_add=True)
+
+    # Informações de pagamento
     total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
     pago = models.BooleanField(default=False)
     metodo_pagamento = models.CharField(max_length=20, choices=METODO_PAGAMENTO_CHOICES)
     data_pagamento = models.DateTimeField(null=True, blank=True)
 
+    def clean(self):
+        """
+        Valida as transições de estado do pedido.
+        """
+        if self.pk:  # Só valida para pedidos existentes
+            try:
+                pedido_original = Pedido.objects.get(pk=self.pk)
+                status_original = pedido_original.status
+                status_novo = self.status
+
+                # Define as transições permitidas
+                transicoes_permitidas = {
+                    'pendente': ['pronto'],  # Pendente só pode ir para Pronto
+                    'pronto': ['entregue'],  # Pronto só pode ir para Entregue
+                    'entregue': []  # Entregue não pode mudar
+                }
+
+                # Verifica se é uma tentativa de retrocesso ou salto inválido
+                if status_novo != status_original:
+                    if status_novo not in transicoes_permitidas.get(status_original, []):
+                        raise ValidationError({
+                            'status': f"Não é possível alterar o status de '{status_original}' para '{status_novo}'. "
+                                      f"Transições permitidas: {', '.join(transicoes_permitidas[status_original]) or 'Nenhuma'}"
+                        })
+
+            except Pedido.DoesNotExist:
+                pass  # Pedido novo, não precisa validar
+
+    def save(self, *args, **kwargs):
+        """
+        Sobrescreve o save para garantir validações de estado.
+        """
+        self.clean()  # Executa as validações
+        super().save(*args, **kwargs)
+
+    def marcar_como_pronto(self):
+        """
+        Marca o pedido como pronto (apenas se estiver pendente).
+        """
+        if self.status == 'pendente':
+            self.status = 'pronto'
+            self.save()
+        else:
+            raise ValidationError(f"Não é possível marcar como pronto. Status atual: {self.status}")
+
+    def marcar_como_entregue(self):
+        """
+        Marca o pedido como entregue (apenas se estiver pronto).
+        """
+        if self.status == 'pronto':
+            self.status = 'entregue'
+            self.save()
+        else:
+            raise ValidationError(f"Não é possível marcar como entregue. Status atual: {self.status}")
+
     def atualizar_total(self):
+        """
+        Atualiza o total do pedido baseado nos itens.
+        """
         self.total = sum(item.preco_total for item in self.itens.all())
         self.save()
 
     def marcar_como_pago(self):
-        """Marca o pedido como pago e define a data de pagamento."""
+        """
+        Marca o pedido como pago e define a data de pagamento.
+        """
         self.pago = True
         self.data_pagamento = timezone.now()
         self.save()
 
-    def __str__(self):
-        return f"Pedido {self.id} - {self.cliente}"
+    def pode_ser_editado(self):
+        """
+        Retorna se o pedido pode ser editado baseado no status.
+        """
+        return self.status in ['pendente', 'pronto']
 
+    def get_proximo_status_possivel(self):
+        """
+        Retorna o próximo status possível para o pedido.
+        """
+        proximos_status = {
+            'pendente': 'pronto',
+            'pronto': 'entregue',
+            'entregue': None
+        }
+        return proximos_status.get(self.status)
+
+    def __str__(self):
+        return f"Pedido {self.id} - {self.cliente} - {self.get_status_display()}"
+
+    class Meta:
+        ordering = ['-criado_em']
 
 # Modelo para Itens do Pedido
 class ItemPedido(models.Model):
@@ -226,6 +320,7 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido.id} - Total: {self.total_pago}"
+
 
 
 
