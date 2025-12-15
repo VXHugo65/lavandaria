@@ -42,20 +42,8 @@ podera indemnizar-se ate 10x.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Vendedor: {{ pedido.funcionario.user.username }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Artigos nao levantados
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Nr.Pdd            Data                                Saldo
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-{% for pedido in pedidos_nao_pagos %}
-{{ pedido.id }}                 {{ pedido.criado_em|date:"d/m/Y" }}                         {{ pedido.total }}
-{% empty %}
-Nenhum pedido encontrado.
-{% endfor %}
-{% if total_em_divida %}
-Total: {{ total_em_divida }}
-{% endif %}
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 
 
 
