@@ -22,15 +22,6 @@ data_inicial = now().date() - timedelta(days=6)
 datas_intervalo = [(data_inicial + timedelta(days=i)) for i in range(7)]
 
 
-# def imprimir_recibo(request, pedido_id):
-#     pedido = get_object_or_404(Pedido, id=pedido_id)
-#     recibo_content = render_to_string('core/recibo_termico.txt', {'pedido': pedido})
-#
-#     response = HttpResponse(recibo_content, content_type="text/plain; charset=utf-8")
-#     response['Content-Disposition'] = f'inline; filename="recibo_pedido_{pedido.id}.txt"'
-#     return response
-
-
 font_path = os.path.join(settings.BASE_DIR, "static/font/Roboto.ttf")
 
 
@@ -52,10 +43,16 @@ def imprimir_recibo_imagem(request, pedido_id):
     # Calcular o total em dívida
     total_em_divida = todos_pedidos_nao_pagos.aggregate(total=Sum('total'))['total'] or 0
 
+    pontos_do_cliente = (
+        Pedido.objects
+        .filter(cliente=pedido.cliente).count()
+    )
+
     recibo_texto = render_to_string('core/recibo_termico.txt', {
         'pedido': pedido,
         'pedidos_nao_pagos': pedidos_nao_pagos,
-        'total_em_divida': total_em_divida
+        'total_em_divida': total_em_divida,
+        'pontos_do_cliente': pontos_do_cliente
     })
 
     # Ajuste do tamanho da fonte e cálculo da altura
@@ -109,49 +106,6 @@ def meu_pedido_details(request, pedido_id):
     itens_pedidos = ItemPedido.objects.filter(pedido=pedido)
 
     return render(request, 'core/order_details.html', {'pedido': pedido, 'itens_pedidos': itens_pedidos})
-
-
-# def download_recibo(request, pedido_id):
-#     # Obtenha o pedido pelo ID
-#     pedido = get_object_or_404(Pedido, id=pedido_id)
-#
-#     # Crie um buffer para armazenar o PDF
-#     buffer = BytesIO()
-#
-#     # Crie o objeto PDF, usando o buffer como seu "arquivo"
-#     p = canvas.Canvas(buffer)
-#
-#     # Adicione conteúdo ao PDF
-#     p.drawString(100, 750, f"Recibo do Pedido #{pedido.id}")
-#     p.drawString(100, 730, f"Lavandaria: {pedido.lavandaria.nome}")
-#     p.drawString(100, 710, f"Funcionário: {pedido.funcionario.user.last_name}")
-#     p.drawString(100, 690, f"Estado: {pedido.status}")
-#     p.drawString(100, 670, f"Total: {pedido.total} MZN")
-#     p.drawString(100, 650, f"Cliente: {pedido.cliente.nome}")
-#     p.drawString(100, 630, f"Data: {pedido.criado_em.strftime('%d-%m-%Y')}")
-#
-#     # Adicione os itens do pedido
-#     y = 610
-#     for item in pedido.itens.all():  # Corrigido: pedido.itens.all()
-#         p.drawString(100, y, f"Item: {item.item_de_servico.nome}")  # Corrigido: item.item_de_servico.nome
-#         p.drawString(100, y - 20, f"Serviço: {item.servico.nome}")  # Corrigido: item.servico.nome
-#         p.drawString(100, y - 40, f"Quantidade: {item.quantidade}")
-#         p.drawString(100, y - 60, f"Preço: {item.preco_total} MZN")
-#         y -= 80
-#
-#     # Finalize o PDF
-#     p.showPage()
-#     p.save()
-#
-#     # Obtenha o valor do buffer e feche-o
-#     pdf = buffer.getvalue()
-#     buffer.close()
-#
-#     # Crie a resposta HTTP com o PDF
-#     response = HttpResponse(pdf, content_type='application/pdf')
-#     response['Content-Disposition'] = f'attachment; filename="recibo_pedido_{pedido.id}.pdf"'
-#
-#     return response
 
 
 def dashboard_callback(request, context):
@@ -263,6 +217,7 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
 
