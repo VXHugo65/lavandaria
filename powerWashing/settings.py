@@ -45,6 +45,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     "core.apps.CoreConfig",
+    "crm.apps.CrmConfig",
 
     'import_export',
 ]
@@ -180,6 +181,11 @@ UNFOLD = {
                         "icon": "dashboard",  # Supported icon set: https://fonts.google.com/icons
                         "link": reverse_lazy("admin:index"),
                     },
+                    {
+                        "title": _("CRM"),
+                        "icon": "analytics",  # Supported icon set: https://fonts.google.com/icons
+                        "link": '/admin/crm-pos-venda/',
+                    },
 
                 ],
             },
@@ -233,3 +239,4 @@ UNFOLD = {
 
 
 }
+
