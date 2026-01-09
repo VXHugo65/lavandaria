@@ -13,6 +13,7 @@ VD          N.{{pedido.id}}
 Factura     N.{{pedido.id}}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+Pts: {{ pontos_do_cliente }}
 Total:              {{ pedido.total }}
 {% if pedido.pago %}
 MP: {{ pedido.get_metodo_pagamento_display }}
@@ -42,8 +43,22 @@ podera indemnizar-se ate 10x.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Vendedor: {{ pedido.funcionario.user.username }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Pedidos nao pagos
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-
-
+Nr.Pdd            Data                                Saldo
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+{% for pedido in pedidos_nao_pagos %}
+{{ pedido.id }}                 {{ pedido.criado_em|date:"d/m/Y" }}                         {{ pedido.total }}
+{% empty %}
+Nenhum pedido encontrado.
+{% endfor %}
+{% if total_em_divida %}
+Total: {{ total_em_divida }}
+{% endif %}
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 
