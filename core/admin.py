@@ -457,39 +457,28 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
 
  
 
-    def enviar_sms_pedido_pronto(self, request, queryset):
-        for pedido in queryset:
-            if pedido.status != 'pronto':
-                self.message_user(
-                    request,
-                    "❌ ERRO. Verifique se os pedidos estão 'prontos'.",
-                    level=messages.ERROR
-                )
-                return
-    
-            if not pedido.cliente.telefone:
-                self.message_user(
-                    request,
-                    "❌ ERRO. O cliente não tem número de telefone.",
-                    level=messages.ERROR
-                )
-                return
-    
-            mensagem = (
-                f"Olá {pedido.cliente.nome}, "
-                f"o seu artigo #{pedido.id} está pronto, para o levantamento. "
-                f"Para mais info. Clique aqui "
-                f"https://lavandaria-production.up.railway.app/meu-pedido/{pedido.id}"
-            )
-    
-            telefone = pedido.cliente.telefone
-            # enviar_sms(telefone, mensagem)
-    
-        self.message_user(
-            request,
-            "✅ SMS enviado com sucesso."
-        )
+   def enviar_sms_pedido_pronto(self, request, queryset):
+        pedidos_notificados = 0
 
+        for pedido in queryset:
+            if pedido.status == 'pronto' and hasattr(pedido.cliente, 'telefone'):
+                link_pedido = f"https://lavandaria-production.up.railway.app/meu-pedido/{pedido.id}"
+                mensagem = (
+                    f"Olá {pedido.cliente.nome}, "
+                    f"o seu artigo #{pedido.id} está pronto, para o levantamento. "
+                    f"Para mais info. Clique aqui {link_pedido}"
+                )
+
+                resposta = enviar_sms_mozesms(pedido.cliente.telefone, mensagem)
+
+                if resposta:
+                    pedidos_notificados += 1
+
+        if pedidos_notificados:
+            messages.success(request, f"Mensagem enviada com sucesso para {pedidos_notificados} clientes.")
+        else:
+            messages.warning(request,
+                             "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
 
     # Atualiza as actions para incluir as novas funções
     actions = [
@@ -534,6 +523,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
