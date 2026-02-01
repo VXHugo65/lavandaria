@@ -454,10 +454,8 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
 
     marcar_como_pronto.short_description = "Marcar como Pronto (apenas pendentes)"
     marcar_como_entregue.short_description = "Marcar como Entregue (apens prontos)"
-
- 
-
-   def enviar_sms_pedido_pronto(self, request, queryset):
+    
+    def enviar_sms_pedido_pronto(self, request, queryset):
         pedidos_notificados = 0
 
         for pedido in queryset:
@@ -479,6 +477,8 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
         else:
             messages.warning(request,
                              "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
+    
+    
 
     # Atualiza as actions para incluir as novas funções
     actions = [
