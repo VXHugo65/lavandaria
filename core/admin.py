@@ -462,8 +462,8 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
             if pedido.status == 'pronto' and hasattr(pedido.cliente, 'telefone'):
                 link_pedido = f"https://lavandaria-production.up.railway.app/meu-pedido/{pedido.id}"
                 mensagem = (
-                    f"Olá {pedido.cliente.nome}, "
-                    f"o seu artigo #{pedido.id} está pronto, para o levantamento. "
+                    f"Ola {pedido.cliente.nome}, "
+                    f"o seu artigo #{pedido.id} esta pronto, para o levantamento. "
                     f"Para mais info. Clique aqui {link_pedido}"
                 )
 
@@ -523,6 +523,7 @@ class ReciboAdmin(ModelAdmin):
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
 
         super().save_model(request, obj, form, change)
+
 
 
 
