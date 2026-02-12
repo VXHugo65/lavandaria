@@ -71,15 +71,33 @@ def imprimir_recibo_imagem(request, pedido_id):
     for linha in recibo_texto.split('\n'):
         _, _, _, altura_linha = draw.textbbox((0, 0), linha, font=font)  # Retorna as coordenadas da caixa delimitadora
         altura_texto += altura_linha + 6  # +4 para o espaçamento entre as linhas
+    
+     # ===== ESPAÇO EXTRA PARA O LOGO =====
+    espaco_logo = 100
+    altura = max(altura_texto + espaco_logo, 200)
 
-    altura = max(altura_texto, 100)  # Garantir que a altura mínima seja 100px
-
-    # Criar a imagem com a altura calculada
     img = Image.new("RGB", (largura, altura), "white")
     draw = ImageDraw.Draw(img)
 
-    # Desenhar o texto
-    draw.multiline_text((10, 10), recibo_texto, fill="black", font=font, spacing=4)
+    # ===== LOGOTIPO (ADICIONADO) =====
+    try:
+        logo_path = os.path.join(settings.BASE_DIR, "static/img/local/logo.jpg")
+        logo = Image.open(logo_path).convert("RGBA")
+        logo = logo.resize((160, 100))
+
+        x_logo = (largura - logo.width) // 2
+        img.paste(logo, (x_logo, 10), logo)
+    except Exception:
+        pass  # se não houver logo, ignora
+
+    # ===== TEXTO (IGUAL AO TEU, SÓ DESCEU O Y) =====
+    draw.multiline_text(
+        (10, espaco_logo),
+        recibo_texto,
+        fill="black",
+        font=font,
+        spacing=4
+    )
 
     # Salvar a imagem em Base64 para exibir no HTML
     buffer = io.BytesIO()
@@ -217,6 +235,7 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
 
