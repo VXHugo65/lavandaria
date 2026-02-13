@@ -29,7 +29,7 @@ def imprimir_recibo_imagem(request, pedido_id):
     pedido = get_object_or_404(Pedido, id=pedido_id)
 
     # Buscar todos os pedidos não pagos do mesmo cliente
-    pedido_nao_pagos = (
+    pedidos_nao_pagos = (
         Pedido.objects
         .filter(cliente=pedido.cliente, pago=False)
         .order_by('-criado_em')
@@ -50,7 +50,7 @@ def imprimir_recibo_imagem(request, pedido_id):
 
     recibo_texto = render_to_string('core/recibo_termico.txt', {
         'pedido': pedido,
-        
+        'pedidos_nao_pagos': pedidos_nao_pagos,
         'total_em_divida': total_em_divida,
         'pontos_do_cliente': pontos_do_cliente
     })
@@ -235,6 +235,7 @@ def dashboard_callback(request, context):
         }
     )
     return context
+
 
 
 
