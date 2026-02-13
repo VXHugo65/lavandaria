@@ -13,6 +13,7 @@ VD          N.{{pedido.id}}
 Factura     N.{{pedido.id}}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
+Pts: {{ pontos_do_cliente }}
 Total:              {{ pedido.total }}
 {% if pedido.pago %}
 MP: {{ pedido.get_metodo_pagamento_display }}
@@ -32,25 +33,31 @@ Total:                                                       {{ pedido.total }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                  IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                    *TERMOS E CONDICOES:
-LEVANTAMENTO DE ROUPAS
-INFORMACAO IMPORTANTE AO CLIENTE
-As roupas e demais artigos ficam prontos entre
-2 a 7 dias, conforme o tipo de servico.
-Apos notificacao de roupa pronta, o cliente
-dispoe de 30 dias para efetuar o levantamento.
-Findo este prazo, será aplicada uma taxa de
-armazenamento correspondente a 50%
-do valor total do servico.
-A empresa não se responsabiliza por artigos
-não levantados após 60 dias.
-Ao deixar os artigos para lavagem,
-o cliente declara estar
-de acordo com estes termos.
+*Termos e condicoes*:
+Nao nos responsabilizamos por artigos
+com ma qualidade ou nao levantados
+num prazo de 30 dias, sendo este
+sujeito a multa de 100% do valor.
+Em caso de dano, perda do artigo
+podera indemnizar-se ate 10x.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Vendedor: {{ pedido.funcionario.user.username }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Pedidos nao pagos
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+Nr.Pdd            Data                                Saldo
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+{% for pedido in pedidos_nao_pagos %}
+{{ pedido.id }}                 {{ pedido.criado_em|date:"d/m/Y" }}                         {{ pedido.total }}
+{% empty %}
+Nenhum pedido encontrado.
+{% endfor %}
+{% if total_em_divida %}
+Total: {{ total_em_divida }}
+{% endif %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
-
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
