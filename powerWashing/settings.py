@@ -181,11 +181,11 @@ UNFOLD = {
                         "icon": "dashboard",  # Supported icon set: https://fonts.google.com/icons
                         "link": reverse_lazy("admin:index"),
                     },
-                    # {
-                    #     "title": _("CRM"),
-                    #     "icon": "analytics",  # Supported icon set: https://fonts.google.com/icons
-                    #     "link": '/admin/crm-pos-venda/',
-                    # },
+                    {
+                        "title": _("CRM"),
+                        "icon": "analytics",  # Supported icon set: https://fonts.google.com/icons
+                        "link": '/admin/crm-pos-venda/',
+                    },
 
                 ],
             },
@@ -239,5 +239,6 @@ UNFOLD = {
 
 
 }
+
 
 
