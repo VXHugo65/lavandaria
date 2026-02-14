@@ -33,13 +33,20 @@ Total:                                                       {{ pedido.total }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                  IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-*Termos e condicoes*:
-Nao nos responsabilizamos por artigos
-com ma qualidade ou nao levantados
-num prazo de 30 dias, sendo este
-sujeito a multa de 100% do valor.
-Em caso de dano, perda do artigo
-podera indemnizar-se ate 10x.
+                        LEVANTAMENTO DE ROUPAS
+INFORMACAO IMPORTANTE AO CLIENTE
+As roupas e demais artigos ficam prontos entre
+2 a 7 dias, conforme o tipo de servico.
+Apos notificacao de roupa pronta, o cliente
+dispoe de 30 dias para efetuar o levantamento.
+Findo este prazo, sera aplicada uma taxa de
+armazenamento correspondente a 50%
+do valor total do servico.
+A empresa nao se responsabiliza por artigos
+nao levantados apos 60 dias.
+Ao deixar os artigos para lavagem,
+o cliente declara estar
+de acordo com estes termos.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Vendedor: {{ pedido.funcionario.user.username }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -61,3 +68,4 @@ Total: {{ total_em_divida }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
