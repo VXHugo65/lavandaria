@@ -1,4 +1,3 @@
-
 POWER WASHING, LDA
 401426310
 {{ pedido.lavandaria.endereco }}
@@ -7,16 +6,27 @@ Cel.: {{ pedido.lavandaria.telefone }}
 Cli.: {{ pedido.cliente.nome }}
       {{ pedido.cliente.telefone }}
 
-{% if pedido.pago %}
-VD          N.{{pedido.id}}
+{% if pedido.status_pagamento == "pago" %}
+VD          N.{{ pedido.id }}
 {% else %}
-Factura     N.{{pedido.id}}
+Factura     N.{{ pedido.id }}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
 Pts: {{ pontos_do_cliente }}
-Total:              {{ pedido.total }}
-{% if pedido.pago %}
-MP: {{ pedido.get_metodo_pagamento_display }}
+
+Total:               {{ pedido.total|stringformat:".2f" }}
+Pago:               {{ valor_pago|stringformat:".2f" }}
+Saldo:               {{ saldo|stringformat:".2f" }}
+
+{% if pedido.status_pagamento == "pago" %}
+Pagamento: QUITADO
+{% elif pedido.status_pagamento == "parcial" %}
+Pagamento: PARCIAL
+{% else %}
+Pagamento: EM ABERTO
+{% endif %}
+{% if ultimo_metodo_pagamento %}
+MP: {{ ultimo_metodo_pagamento_label }}
 {% endif %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 *So aceitamos devolucao dentro de 24h
@@ -29,12 +39,14 @@ Descricao                       quant.                        Total
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Total:                                                       {{ pedido.total }}
+Total:                                                              {{ pedido.total|stringformat:".2f" }}
+Pago:                                                              {{ valor_pago|stringformat:".2f" }}
+Saldo:                                                              {{ saldo|stringformat:".2f" }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                 IVA INCLUSO
+                                  IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-                        LEVANTAMENTO DE ROUPAS
-INFORMACAO IMPORTANTE AO CLIENTE
+                LEVANTAMENTO DE ROUPAS
+       INFORMACAO IMPORTANTE AO CLIENTE
 As roupas e demais artigos ficam prontos entre
 2 a 7 dias, conforme o tipo de servico.
 Apos notificacao de roupa pronta, o cliente
@@ -50,22 +62,21 @@ de acordo com estes termos.
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 Vendedor: {{ pedido.funcionario.user.username }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Pedidos nao pagos
+
+Pedidos com saldo em aberto (ultimos 3)
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Nr.Pdd            Data                                Saldo
+Nr.Pdd                        Data                                Saldo
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-{% for pedido in pedidos_nao_pagos %}
-{{ pedido.id }}                 {{ pedido.criado_em|date:"d/m/Y" }}                         {{ pedido.total }}
+{% for p in pedidos_nao_pagos %}
+{{ p.id }}                          {{ p.criado_em|date:"d/m/Y" }}                         {{ p.saldo|stringformat:".2f" }}
 {% empty %}
 Nenhum pedido encontrado.
 {% endfor %}
 {% if total_em_divida %}
-Total: {{ total_em_divida }}
+Total em divida: {{ total_em_divida|stringformat:".2f" }}
 {% endif %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-
