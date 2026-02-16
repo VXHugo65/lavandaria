@@ -2,6 +2,10 @@ from django.db import models
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
+from django.core.exceptions import ValidationError
+from django.db import models, transaction
+from django.db.models import Sum
+from decimal import Decimal
 
 
 # Modelo para Lavandarias
@@ -97,141 +101,130 @@ class Cliente(models.Model):
 
 
 # Modelo para Pedidos
-from django.db import models
-from django.contrib.auth.models import User, Group, Permission
-from django.core.exceptions import ValidationError
-from django.utils import timezone
-
-
 class Pedido(models.Model):
-    """
-    Representa um pedido associado a uma lavandaria e cliente.
-    Com fluxo sequencial de estados: pendente → pronto → entregue
-    """
-
     STATUS_CHOICES = [
-        ('pendente', 'Pendente'),
-        ('pronto', 'Pronto'),
-        ('entregue', 'Entregue'),
+        ("pendente", "Pendente"),
+        ("pronto", "Pronto"),
+        ("entregue", "Entregue"),
     ]
 
-    METODO_PAGAMENTO_CHOICES = [
-        ('numerario', 'Numerario'),
-        ('pos', 'POS (Cartao)'),
-        ('conta_movel', 'Conta Movel'),
-        ('mpesa', 'M-Pesa'),
-        ('emola', 'e-Mola'),
-        ('outro', 'Outro'),
+    STATUS_PAGAMENTO_CHOICES = [
+        ("nao_pago", "Não pago"),
+        ("parcial", "Parcial"),
+        ("pago", "Pago"),
     ]
 
-    # Relações
-    cliente = models.ForeignKey('Cliente', on_delete=models.CASCADE, related_name='pedidos')
-    lavandaria = models.ForeignKey('Lavandaria', on_delete=models.CASCADE, related_name='pedidos')
-    funcionario = models.ForeignKey('Funcionario', on_delete=models.SET_NULL, related_name='pedidos', null=True,
-                                    blank=True)
+    cliente = models.ForeignKey("Cliente", on_delete=models.CASCADE, related_name="pedidos")
+    lavandaria = models.ForeignKey("Lavandaria", on_delete=models.CASCADE, related_name="pedidos")
+    funcionario = models.ForeignKey(
+        "Funcionario", on_delete=models.SET_NULL, related_name="pedidos", null=True, blank=True
+    )
 
-    # Status e datas
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pendente')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pendente")
     criado_em = models.DateTimeField(auto_now_add=True)
 
-    # Informações de pagamento
-    total = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
+    total = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+
+    # LEGACY (não edite manualmente; é derivado da soma dos pagamentos)
     pago = models.BooleanField(default=False)
-    metodo_pagamento = models.CharField(max_length=20, choices=METODO_PAGAMENTO_CHOICES)
     data_pagamento = models.DateTimeField(null=True, blank=True)
 
+    # NOVO
+    status_pagamento = models.CharField(
+        max_length=20, choices=STATUS_PAGAMENTO_CHOICES, default="nao_pago"
+    )
+    total_pago = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+
+    @property
+    def saldo(self) -> Decimal:
+        return (self.total or Decimal("0.00")) - (self.total_pago or Decimal("0.00"))
+
     def clean(self):
-        """
-        Valida as transições de estado do pedido.
-        """
-        if self.pk:  # Só valida para pedidos existentes
-            try:
-                pedido_original = Pedido.objects.get(pk=self.pk)
-                status_original = pedido_original.status
-                status_novo = self.status
+        # valida fluxo operacional (igual ao teu, só mais compacto)
+        if self.pk:
+            pedido_original = Pedido.objects.get(pk=self.pk)
+            status_original = pedido_original.status
+            status_novo = self.status
 
-                # Define as transições permitidas
-                transicoes_permitidas = {
-                    'pendente': ['pronto'],  # Pendente só pode ir para Pronto
-                    'pronto': ['entregue'],  # Pronto só pode ir para Entregue
-                    'entregue': []  # Entregue não pode mudar
-                }
+            transicoes = {
+                "pendente": ["pronto"],
+                "pronto": ["entregue"],
+                "entregue": [],
+            }
+            if status_novo != status_original and status_novo not in transicoes.get(status_original, []):
+                raise ValidationError(
+                    {"status": f"Transição inválida: {status_original} → {status_novo}"}
+                )
 
-                # Verifica se é uma tentativa de retrocesso ou salto inválido
-                if status_novo != status_original:
-                    if status_novo not in transicoes_permitidas.get(status_original, []):
-                        raise ValidationError({
-                            'status': f"Não é possível alterar o status de '{status_original}' para '{status_novo}'. "
-                                      f"Transições permitidas: {', '.join(transicoes_permitidas[status_original]) or 'Nenhuma'}"
-                        })
-
-            except Pedido.DoesNotExist:
-                pass  # Pedido novo, não precisa validar
+        if self.total is not None and self.total < 0:
+            raise ValidationError({"total": "O total não pode ser negativo."})
 
     def save(self, *args, **kwargs):
-        """
-        Sobrescreve o save para garantir validações de estado.
-        """
-        self.clean()  # Executa as validações
+        self.clean()
         super().save(*args, **kwargs)
 
-    def marcar_como_pronto(self):
-        """
-        Marca o pedido como pronto (apenas se estiver pendente).
-        """
-        if self.status == 'pendente':
-            self.status = 'pronto'
-            self.save()
-        else:
-            raise ValidationError(f"Não é possível marcar como pronto. Status atual: {self.status}")
-
-    def marcar_como_entregue(self):
-        """
-        Marca o pedido como entregue (apenas se estiver pronto).
-        """
-        if self.status == 'pronto':
-            self.status = 'entregue'
-            self.save()
-        else:
-            raise ValidationError(f"Não é possível marcar como entregue. Status atual: {self.status}")
-
     def atualizar_total(self):
-        """
-        Atualiza o total do pedido baseado nos itens.
-        """
-        self.total = sum(item.preco_total for item in self.itens.all())
-        self.save()
+        self.total = sum((item.preco_total or 0) for item in self.itens.all())
+        self.save(update_fields=["total"])
+        self.recalcular_pagamentos()
 
-    def marcar_como_pago(self):
-        """
-        Marca o pedido como pago e define a data de pagamento.
-        """
-        self.pago = True
-        self.data_pagamento = timezone.now()
-        self.save()
+    def recalcular_pagamentos(self):
+        if not self.pk:
+            return
 
-    def pode_ser_editado(self):
-        """
-        Retorna se o pedido pode ser editado baseado no status.
-        """
-        return self.status in ['pendente', 'pronto']
+        soma = self.pagamentos.aggregate(s=Sum("valor"))["s"] or Decimal("0.00")
+        soma = Decimal(soma)
+        self.total_pago = soma
 
-    def get_proximo_status_possivel(self):
-        """
-        Retorna o próximo status possível para o pedido.
-        """
-        proximos_status = {
-            'pendente': 'pronto',
-            'pronto': 'entregue',
-            'entregue': None
-        }
-        return proximos_status.get(self.status)
+        if soma <= 0:
+            self.status_pagamento = "nao_pago"
+            self.pago = False
+            self.data_pagamento = None
+        elif soma < (self.total or Decimal("0.00")):
+            self.status_pagamento = "parcial"
+            self.pago = False
+            ultimo = self.pagamentos.order_by("-pago_em").first()
+            self.data_pagamento = ultimo.pago_em if ultimo else self.data_pagamento
+        else:
+            self.status_pagamento = "pago"
+            self.pago = True
+            ultimo = self.pagamentos.order_by("-pago_em").first()
+            self.data_pagamento = ultimo.pago_em if ultimo else timezone.now()
+
+        self.save(update_fields=["total_pago", "status_pagamento", "pago", "data_pagamento"])
+
+    @transaction.atomic
+    def registrar_pagamento(self, *, valor, metodo_pagamento, funcionario=None, referencia=None):
+        valor = Decimal(valor)
+        if valor <= 0:
+            raise ValidationError("Valor do pagamento deve ser > 0.")
+
+        pedido = Pedido.objects.select_for_update().get(pk=self.pk)
+
+        pago_ate_agora = pedido.pagamentos.aggregate(s=Sum("valor"))["s"] or Decimal("0.00")
+        pago_ate_agora = Decimal(pago_ate_agora)
+
+        saldo = (pedido.total or Decimal("0.00")) - pago_ate_agora
+        if valor > saldo:
+            raise ValidationError(f"Pagamento excede o saldo. Saldo atual: {saldo}")
+
+        PagamentoPedido.objects.create(
+            pedido=pedido,
+            valor=valor,
+            metodo_pagamento=metodo_pagamento,
+            referencia=referencia,
+            criado_por=funcionario,
+        )
+
+        pedido.recalcular_pagamentos()
+        return pedido
 
     def __str__(self):
         return f"Pedido {self.id} - {self.cliente} - {self.get_status_display()}"
 
     class Meta:
-        ordering = ['-criado_em']
+        ordering = ["-criado_em"]
+
 
 # Modelo para Itens do Pedido
 class ItemPedido(models.Model):
@@ -264,6 +257,39 @@ class ItemPedido(models.Model):
         return f"{item_nome} - {self.quantidade}x - Total: {self.preco_total}"
 
 
+class PagamentoPedido(models.Model):
+
+    METODO_PAGAMENTO_CHOICES = [
+        ('numerario', 'Numerario'),
+        ('pos', 'POS (Cartao)'),
+        ('conta_movel', 'Conta Movel'),
+        ('mpesa', 'M-Pesa'),
+        ('emola', 'e-Mola'),
+        ('outro', 'Outro'),
+    ]
+
+    pedido = models.ForeignKey("Pedido", on_delete=models.CASCADE, related_name="pagamentos")
+    valor = models.DecimalField(max_digits=10, decimal_places=2)
+    metodo_pagamento = models.CharField(max_length=20, choices=METODO_PAGAMENTO_CHOICES)
+    referencia = models.CharField(max_length=80, blank=True, null=True)
+    pago_em = models.DateTimeField(default=timezone.now)
+    criado_por = models.ForeignKey("Funcionario", on_delete=models.SET_NULL, null=True, blank=True)
+
+    class Meta:
+        ordering = ["-pago_em"]
+
+    def clean(self):
+        if self.valor is None or self.valor <= 0:
+            raise ValidationError({"valor": "Pagamento deve ser maior que 0."})
+
+    def save(self, *args, **kwargs):
+        self.clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"Pagamento {self.id} - Pedido {self.pedido_id} - {self.valor}"
+
+
 # Função para criar grupos e associar permissões
 def criar_grupos_com_permissoes():
     """
@@ -277,6 +303,7 @@ def criar_grupos_com_permissoes():
             "add_pedido", "change_pedido", "delete_pedido", "view_pedido",
             "add_cliente", "change_cliente", "delete_cliente", "view_cliente",
             "add_itempedido", "change_itempedido", "delete_itempedido", "view_itempedido",
+            "add_pagamentopedido", "change_pagamentopedido", "delete_pagamentopedido", "view_pagamentopedido",
         ],
         "caixa": [
             "add_pedido", "change_pedido", "delete_pedido", "view_pedido",
@@ -300,28 +327,22 @@ def criar_grupos_com_permissoes():
 
 class Recibo(models.Model):
     """
-    Representa um recibo emitido para um pedido.
+    Recibo passa a ser por pagamento (não por pedido).
+    Isso evita quebrar pagamentos parciais.
     """
+    pedido = models.ForeignKey(Pedido, on_delete=models.CASCADE, related_name="recibos")
+    pagamento = models.OneToOneField(PagamentoPedido, on_delete=models.PROTECT, related_name="recibo")
 
-    pedido = models.OneToOneField(Pedido, on_delete=models.CASCADE, related_name="recibo")
     total_pago = models.DecimalField(max_digits=10, decimal_places=2)
-    metodo_pagamento = models.CharField(max_length=20, choices=Pedido.METODO_PAGAMENTO_CHOICES)
+    metodo_pagamento = models.CharField(max_length=20, choices=PagamentoPedido.METODO_PAGAMENTO_CHOICES)
+
     emitido_em = models.DateTimeField(auto_now_add=True)
-    criado_por = models.ForeignKey(Funcionario, on_delete=models.SET_NULL, blank=True, null=True)
+    criado_por = models.ForeignKey("Funcionario", on_delete=models.SET_NULL, blank=True, null=True)
 
     def save(self, *args, **kwargs):
-
-        # Atualizar status do pedido
-        self.pedido.pago = True
-        self.pedido.status = "entregue"  # Atualiza o status para "entregue"
-        self.pedido.save()
-
+        # NÃO mexe em status/pago aqui.
+        # Status do Pedido é operacional (pendente/pronto/entregue) e pagamento é derivado dos pagamentos.
         super().save(*args, **kwargs)
 
     def __str__(self):
-        return f"Recibo {self.id} - Pedido {self.pedido.id} - Total: {self.total_pago}"
-
-
-
-
-
+        return f"Recibo {self.id} - Pedido {self.pedido_id} - Total: {self.total_pago}"
