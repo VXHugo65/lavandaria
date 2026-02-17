@@ -243,54 +243,7 @@
     </tfoot>
 </table>
 
-<!-- Pedidos em aberto -->
-{% if pedidos_em_aberto %}
-    <div class="section-title" style="border-left-color:#dc3545;">
-        Pedidos em Aberto (Parcial / Não Pago)
-    </div>
-
-    <table class="table">
-        <thead>
-            <tr>
-                <th>#Pedido</th>
-                <th>Cliente</th>
-                <th>Data</th>
-                <th class="text-right">Total</th>
-                <th class="text-right">Recebido</th>
-                <th class="text-right">Saldo</th>
-                <th class="text-center">Status Pgto</th>
-            </tr>
-        </thead>
-        <tbody>
-        {% for row in pedidos_em_aberto %}
-            <tr>
-                <td>{{ row.pedido.id }}</td>
-                <td>{{ row.pedido.cliente.nome }}</td>
-                <td>{{ row.pedido.criado_em|date:"d/m/Y" }}</td>
-                <td class="text-right">{{ row.pedido.total|currency_mzn }}</td>
-                <td class="text-right">{{ row.recebido|currency_mzn }}</td>
-                <td class="text-right">{{ row.saldo|currency_mzn }}</td>
-                <td class="text-center">
-                    {% if row.pedido.status_pagamento == "pago" %}
-                        <span class="badge ok">QUITADO</span>
-                    {% elif row.pedido.status_pagamento == "parcial" %}
-                        <span class="badge">PARCIAL</span>
-                    {% else %}
-                        <span class="badge danger">EM ABERTO</span>
-                    {% endif %}
-                </td>
-            </tr>
-        {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr>
-                <td colspan="5">Saldo Total em Aberto</td>
-                <td class="text-right">{{ saldo_total|currency_mzn }}</td>
-                <td></td>
-            </tr>
-        </tfoot>
-    </table>
-{% endif %}
 
 </body>
 </html>
+
