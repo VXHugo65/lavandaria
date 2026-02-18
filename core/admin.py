@@ -445,19 +445,26 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
         return form
 
     def _restrict_status_choices(self, form, obj):
-        if "status" in form.base_fields:
-            current_status = obj.status
-            status_flow = {
-                "pendente": ["pendente", "pronto"],
-                "pronto": ["pronto", "entregue"],
-                "entregue": ["entregue"],
-            }
-            allowed_statuses = status_flow.get(current_status, [current_status])
-            form.base_fields["status"].choices = [
-                c for c in form.base_fields["status"].choices if c[0] in allowed_statuses
-            ]
-            if len(allowed_statuses) == 1:
-                form.base_fields["status"].disabled = True
+    if "status" in form.base_fields:
+        current_status = obj.status
+
+        status_flow = {
+            "pendente": ["pendente", "completo", "pronto"],
+            "completo": ["completo", "pronto"],
+            "pronto": ["pronto", "entregue"],
+            "entregue": ["entregue"],
+        }
+
+        allowed_statuses = status_flow.get(current_status, [current_status])
+
+        form.base_fields["status"].choices = [
+            c for c in form.base_fields["status"].choices
+            if c[0] in allowed_statuses
+        ]
+
+        if len(allowed_statuses) == 1:
+            form.base_fields["status"].disabled = True
+
 
     def save_model(self, request, obj, form, change):
         # mantém a tua lógica de atribuir funcionario/lavandaria
@@ -710,6 +717,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
