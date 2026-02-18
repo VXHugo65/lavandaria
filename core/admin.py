@@ -260,35 +260,9 @@ class ItemPedidoInline(StackedInline):
     autocomplete_fields = ('item_de_servico',)
     readonly_fields = ('preco_total',)
 
-    def get_readonly_fields(self, request, obj=None):
-        """
-        Torna todos os campos readonly exceto 'descricao' quando o pedido já foi criado.
-        """
-        if obj and obj.pk:  # Se o pedido já existe no banco
-            # Pega todos os campos do modelo
-            all_fields = [field.name for field in self.model._meta.fields]
-            # Remove 'descricao' da lista de campos readonly
-            readonly_fields = [field for field in all_fields if field != 'descricao']
-            # Adiciona os campos readonly padrão
-            readonly_fields.extend(self.readonly_fields)
-            return readonly_fields
-        return self.readonly_fields
+  
 
-    def has_add_permission(self, request, obj=None):
-        """
-        Impede adicionar novos itens se o pedido já foi criado.
-        """
-        if obj and obj.pk:
-            return False
-        return super().has_add_permission(request, obj)
 
-    def has_delete_permission(self, request, obj=None):
-        """
-        Impede deletar itens se o pedido já foi criado.
-        """
-        if obj and obj.pk:
-            return False
-        return super().has_delete_permission(request, obj)
 
 
 
@@ -736,5 +710,6 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
