@@ -449,7 +449,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
             current_status = obj.status
     
             status_flow = {
-                "pendente": ["pendente", "completo", "pronto"],
+                "pendente": ["pendente", "completo"],
                 "completo": ["completo", "pronto"],
                 "pronto": ["pronto", "entregue"],
                 "entregue": ["entregue"],
@@ -717,6 +717,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
