@@ -32,7 +32,6 @@ from django.utils.html import format_html
 from unfold.admin import ModelAdmin
 from .models import Pedido, PagamentoPedido, Funcionario
 
-
 admin.site.unregister(Group)
 admin.site.unregister(User)
 
@@ -84,7 +83,6 @@ def gerar_relatorio_pdf(modeladmin, request, queryset):
 
 from django.db.models import Sum, Count
 from django.db.models.functions import Coalesce
-
 
 DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2))
 
@@ -260,11 +258,6 @@ class ItemPedidoInline(StackedInline):
     autocomplete_fields = ('item_de_servico',)
     readonly_fields = ('preco_total',)
 
-  
-
-
-
-
 
 class PagamentoPedidoInline(StackedInline):
     model = PagamentoPedido
@@ -436,6 +429,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
 
     def saldo_admin(self, obj):
         return obj.saldo
+
     saldo_admin.short_description = "Saldo"
 
     def get_form(self, request, obj=None, **kwargs):
@@ -447,26 +441,25 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     def _restrict_status_choices(self, form, obj):
         if "status" in form.base_fields:
             current_status = obj.status
-    
+
             status_flow = {
                 "pendente": ["pendente", "completo"],
                 "completo": ["completo", "pronto"],
                 "pronto": ["pronto", "entregue"],
                 "entregue": ["entregue"],
             }
-    
+
             allowed_statuses = status_flow.get(current_status, [current_status])
             choices = [choice for choice in form.base_fields['status'].choices
                        if choice[0] in allowed_statuses]
-    
+
             form.base_fields["status"].choices = [
                 c for c in form.base_fields["status"].choices
                 if c[0] in allowed_statuses
             ]
-    
+
             if len(allowed_statuses) == 1:
                 form.base_fields["status"].disabled = True
-
 
     def save_model(self, request, obj, form, change):
         # mantém a tua lógica de atribuir funcionario/lavandaria
@@ -530,49 +523,118 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
 
     botao_imprimir.short_description = "Imprimir Recibo"
 
+    def marcar_como_completo(self, request, queryset):
+        pedidos_processados = 0
+
+        for pedido in queryset:
+            if pedido.status == "pendente":
+                pedido.status = "completo"
+                pedido.save(update_fields=["status"])
+                pedidos_processados += 1
+            else:
+                messages.warning(
+                    request,
+                    f"Pedido {pedido.id} não pode ser marcado como completo. "
+                    f"Status atual: {pedido.status}"
+                )
+    
+        if pedidos_processados:
+            messages.success(
+                request,
+                f"{pedidos_processados} pedido(s) marcado(s) como completo."
+            )
+        else:
+            messages.warning(request, "Nenhum pedido pôde ser processado.")
+
+
+    def marcar_como_pronto(self, request, queryset):
+        pedidos_processados = 0
+    
+    
+        for pedido in queryset:
+            if pedido.status == "completo":
+                pedido.status = "pronto"
+                pedido.save(update_fields=["status"])
+                pedidos_processados += 1
+            else:
+                messages.warning(
+                    request,
+                    f"Pedido {pedido.id} não pode ser marcado como pronto. "
+                    f"Status atual: {pedido.status}"
+                )
+        
+        if pedidos_processados:
+            messages.success(
+                request,
+                f"{pedidos_processados} pedido(s) marcado(s) como pronto."
+            )
+        else:
+            messages.warning(request, "Nenhum pedido pôde ser processado.")
+
+
+    def marcar_como_entregue(self, request, queryset):
+        pedidos_processados = 0
+    
+    
+        for pedido in queryset:
+            if pedido.status == "pronto":
+                pedido.status = "entregue"
+                pedido.save(update_fields=["status"])
+                pedidos_processados += 1
+            else:
+                messages.warning(
+                    request,
+                    f"Pedido {pedido.id} não pode ser marcado como entregue. "
+                    f"Status atual: {pedido.status}"
+                )
+        
+        if pedidos_processados:
+            messages.success(
+                request,
+                f"{pedidos_processados} pedido(s) marcado(s) como entregue."
+            )
+        else:
+            messages.warning(request, "Nenhum pedido pôde ser processado.")
+    
+    marcar_como_completo.short_description = ("Marcar como Completo (apenas pendentes)")
+    marcar_como_pronto.short_description = "Marcar como Pronto (apenas completo)"
+    marcar_como_entregue.short_description = "Marcar como Entregue (apenas prontos)"
+
+
+    def enviar_sms_pedido_pronto(self, request, queryset):
+        pedidos_notificados = 0
+    
+        for pedido in queryset:
+            if pedido.status == 'pronto' and hasattr(pedido.cliente, 'telefone'):
+                link_pedido = f"https://lavandaria-production.up.railway.app/meu-pedido/{pedido.id}"
+                mensagem = (
+                    f"Ola {pedido.cliente.nome}, "
+                    f"o seu artigo #{pedido.id} esta pronto, para o levantamento. "
+                    f"Para mais info. Clique aqui {link_pedido}"
+                )
+    
+                resposta = enviar_sms_mozesms(pedido.cliente.telefone, mensagem)
+    
+                if resposta:
+                    pedidos_notificados += 1
+    
+        if pedidos_notificados:
+            messages.success(request, f"Mensagem enviada com sucesso para {pedidos_notificados} clientes.")
+        else:
+            messages.warning(request,
+                             "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
+
+
     # mantém as tuas actions operacionais
     actions = [
+        "marcar_como_completo",
         "marcar_como_pronto",
         "marcar_como_entregue",
         "enviar_sms_pedido_pronto",
         gerar_relatorio_pdf,
         gerar_relatorio_financeiro,
     ]
-
-    def marcar_como_pronto(self, request, queryset):
-        pedidos_processados = 0
-        for pedido in queryset:
-            if pedido.status == "pendente":
-                pedido.status = "pronto"
-                pedido.save(update_fields=["status"])
-                pedidos_processados += 1
-            else:
-                messages.warning(request, f"Pedido {pedido.id} não pode ser marcado como pronto. Status atual: {pedido.status}")
-        if pedidos_processados:
-            messages.success(request, f"{pedidos_processados} pedidos marcados como pronto.")
-        else:
-            messages.warning(request, "Nenhum pedido pôde ser processado.")
-
-    def marcar_como_entregue(self, request, queryset):
-        pedidos_processados = 0
-        for pedido in queryset:
-            if pedido.status == "pronto":
-                # opcional: bloquear entrega se não estiver pago
-                # if pedido.status_pagamento != "pago":
-                #     messages.warning(request, f"Pedido {pedido.id} não pode ser entregue: saldo em aberto ({pedido.saldo}).")
-                #     continue
-                pedido.status = "entregue"
-                pedido.save(update_fields=["status"])
-                pedidos_processados += 1
-            else:
-                messages.warning(request, f"Pedido {pedido.id} não pode ser marcado como entregue. Status atual: {pedido.status}")
-        if pedidos_processados:
-            messages.success(request, f"{pedidos_processados} pedidos marcados como entregue.")
-        else:
-            messages.warning(request, "Nenhum pedido pôde ser processado.")
-
-    marcar_como_pronto.short_description = "Marcar como Pronto (apenas pendentes)"
-    marcar_como_entregue.short_description = "Marcar como Entregue (apenas prontos)"
+    enviar_sms_pedido_pronto.short_description = "Enviar mensagem de pedido pronto"
 
 
 # Configuração do modelo ItemPedido no Admin
@@ -610,15 +672,15 @@ class ReciboAdmin(ModelAdmin):
 
 def _total_pago(pedido: Pedido) -> Decimal:
     return (
-        PagamentoPedido.objects.filter(pedido=pedido)
-        .aggregate(
-            total=Coalesce(
-                Sum("valor"),
-                Value(Decimal("0.00")),
-                output_field=DecimalField(max_digits=12, decimal_places=2),
-            )
-        )["total"]
-        or Decimal("0.00")
+            PagamentoPedido.objects.filter(pedido=pedido)
+            .aggregate(
+                total=Coalesce(
+                    Sum("valor"),
+                    Value(Decimal("0.00")),
+                    output_field=DecimalField(max_digits=12, decimal_places=2),
+                )
+            )["total"]
+            or Decimal("0.00")
     )
 
 
@@ -719,6 +781,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
