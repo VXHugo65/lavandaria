@@ -25,9 +25,14 @@ Pagamento: PARCIAL
 {% else %}
 Pagamento: EM ABERTO
 {% endif %}
-{% if ultimo_metodo_pagamento %}
-MP: {{ ultimo_metodo_pagamento_label }}
+
+{% if pedido.pagamentos.exists %}
+Detalhes de Pagamento:
+{% for pagamento in pedido.pagamentos.all %}
+{{ pagamento.valor|stringformat:".2f" }}  {{ pagamento.get_metodo_pagamento_display }}
+{% endfor %}
 {% endif %}
+
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 *So aceitamos devolucao dentro de 24h
  e o artigo nao deve ter sido usado*
@@ -80,3 +85,4 @@ Total em divida: {{ total_em_divida|stringformat:".2f" }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
