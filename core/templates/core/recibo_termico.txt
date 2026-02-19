@@ -14,9 +14,9 @@ Factura     N.{{ pedido.id }}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
 Pts: {{ pontos_do_cliente }}
 
-Total:               {{ pedido.total|stringformat:".2f" }}MT
-Pago:               {{ valor_pago|stringformat:".2f" }}MT
-Saldo:               {{ saldo|stringformat:".2f" }}MT
+Total:               {{ pedido.total|stringformat:".2f" }} MT
+Pago:               {{ valor_pago|stringformat:".2f" }} MT
+Saldo:               {{ saldo|stringformat:".2f" }} MT
 
 {% if pedido.status_pagamento == "pago" %}
 Pagamento: QUITADO
@@ -29,7 +29,7 @@ Pagamento: EM ABERTO
 {% if pedido.pagamentos.exists %}
 Detalhes de Pagamento:
 {% for pagamento in pedido.pagamentos.all %}
-{{ pagamento.valor|stringformat:".2f" }}MT  {{ pagamento.get_metodo_pagamento_display }}
+{{ pagamento.valor|stringformat:".2f" }} MT  {{ pagamento.get_metodo_pagamento_display }}
 {% endfor %}
 {% endif %}
 
@@ -44,9 +44,9 @@ Descricao                       quant.                        Total
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Total:                                                              {{ pedido.total|stringformat:".2f" }}
-Pago:                                                              {{ valor_pago|stringformat:".2f" }}
-Saldo:                                                              {{ saldo|stringformat:".2f" }}
+Total:                                                           {{ pedido.total|stringformat:".2f" }} MT
+Pago:                                                            {{ valor_pago|stringformat:".2f" }} MT
+Saldo:                                                           {{ saldo|stringformat:".2f" }} MT
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                                   IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -73,7 +73,7 @@ Pedidos com saldo em aberto (ultimos 3)
 Nr.Pdd                        Data                                Saldo
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for p in pedidos_nao_pagos %}
-{{ p.id }}                          {{ p.criado_em|date:"d/m/Y" }}                         {{ p.saldo|stringformat:".2f" }}
+{{ p.id }}                      {{ p.criado_em|date:"d/m/Y" }}              { p.saldo|stringformat:".2f" }} MT
 {% empty %}
 Nenhum pedido encontrado.
 {% endfor %}
@@ -85,5 +85,6 @@ Total em divida: {{ total_em_divida|stringformat:".2f" }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 
 
