@@ -14,9 +14,9 @@ Factura     N.{{ pedido.id }}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
 Pts: {{ pontos_do_cliente }}
 
-Total:               {{ pedido.total|stringformat:".2f" }}
-Pago:               {{ valor_pago|stringformat:".2f" }}
-Saldo:               {{ saldo|stringformat:".2f" }}
+Total:               {{ pedido.total|stringformat:".2f" }}MT
+Pago:               {{ valor_pago|stringformat:".2f" }}MT
+Saldo:               {{ saldo|stringformat:".2f" }}MT
 
 {% if pedido.status_pagamento == "pago" %}
 Pagamento: QUITADO
@@ -29,7 +29,7 @@ Pagamento: EM ABERTO
 {% if pedido.pagamentos.exists %}
 Detalhes de Pagamento:
 {% for pagamento in pedido.pagamentos.all %}
-{{ pagamento.valor|stringformat:".2f" }}  {{ pagamento.get_metodo_pagamento_display }}
+{{ pagamento.valor|stringformat:".2f" }}MT  {{ pagamento.get_metodo_pagamento_display }}
 {% endfor %}
 {% endif %}
 
@@ -40,7 +40,7 @@ Detalhes de Pagamento:
 Descricao                       quant.                        Total
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for item in pedido.itens.all %}
-{{ item.item_de_servico.nome|slice:":16"|ljust:16 }}        {{ item.quantidade|stringformat:"3d" }}                          {{ item.preco_total|stringformat:".2f" }}
+{{ item.item_de_servico.nome|slice:":16"|ljust:16 }}        {{ item.quantidade|stringformat:"3d" }}                          {{ item.preco_total|stringformat:".2f" }}MT
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -85,4 +85,5 @@ Total em divida: {{ total_em_divida|stringformat:".2f" }}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+
 
