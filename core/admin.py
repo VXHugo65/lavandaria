@@ -456,6 +456,8 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
             }
     
             allowed_statuses = status_flow.get(current_status, [current_status])
+            choices = [choice for choice in form.base_fields['status'].choices
+                       if choice[0] in allowed_statuses]
     
             form.base_fields["status"].choices = [
                 c for c in form.base_fields["status"].choices
@@ -717,6 +719,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
