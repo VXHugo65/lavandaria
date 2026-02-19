@@ -406,6 +406,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     list_filter = (
         "status",
         "status_pagamento",
+        "data_pagamento",
         ("criado_em", RangeDateTimeFilter),
     )
     list_filter_submit = True
@@ -788,6 +789,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
