@@ -264,7 +264,6 @@ class PagamentoPedidoInline(StackedInline):
     extra = 0
     fields = (
         ("valor", "metodo_pagamento"),
-        ("referencia",),
         ("pago_em", "criado_por"),
     )
     readonly_fields = ("pago_em", "criado_por")
@@ -781,6 +780,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
