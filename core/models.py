@@ -104,6 +104,7 @@ class Cliente(models.Model):
 class Pedido(models.Model):
     STATUS_CHOICES = [
         ("pendente", "Pendente"),
+        ("completo","Completo"),
         ("pronto", "Pronto"),
         ("entregue", "Entregue"),
     ]
@@ -346,3 +347,4 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido_id} - Total: {self.total_pago}"
+
