@@ -148,7 +148,8 @@ class Pedido(models.Model):
             status_novo = self.status
 
             transicoes = {
-                "pendente": ["pronto"],
+                "pendente": ["completo"],
+                "completo": ["pronto"],
                 "pronto": ["entregue"],
                 "entregue": [],
             }
@@ -347,4 +348,5 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido_id} - Total: {self.total_pago}"
+
 
