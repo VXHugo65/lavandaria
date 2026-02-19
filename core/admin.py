@@ -396,7 +396,8 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
         "total", "total_pago", "saldo_admin",
         "botao_imprimir"
     )
-    search_fields = ("cliente__nome", "cliente__telefone", "id")
+    search_fields = ("cliente__nome", "cliente__telefone", "id","itens__item_de_servico__nome",
+        "itens__descricao",)
     list_display_links = ("cliente", "id")
 
     # ❌ Não permitir editar pagamento manualmente
@@ -425,6 +426,13 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
 
     # ✅ adiciona pagamentos inline + itens
     inlines = [ItemPedidoInline, PagamentoPedidoInline]
+    
+    def get_search_results(self, request, queryset, search_term):
+        queryset, use_distinct = super().get_search_results(
+            request, queryset, search_term
+        )
+        return queryset.distinct(), use_distinct
+    
 
     def saldo_admin(self, obj):
         return obj.saldo
@@ -780,6 +788,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
