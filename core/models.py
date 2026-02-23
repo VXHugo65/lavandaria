@@ -177,7 +177,7 @@ class Pedido(models.Model):
 
         soma = self.pagamentos.aggregate(s=Sum("valor"))["s"] or Decimal("0.00")
         soma = Decimal(soma)
-        self.total_pago = soma
+        self.total_pago = min(soma, self.total or Decimal("0.00"))
 
         if soma <= 0:
             self.status_pagamento = "nao_pago"
@@ -349,6 +349,7 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido_id} - Total: {self.total_pago}"
+
 
 
 
