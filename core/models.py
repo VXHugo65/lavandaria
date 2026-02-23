@@ -138,7 +138,8 @@ class Pedido(models.Model):
 
     @property
     def saldo(self) -> Decimal:
-        return (self.total or Decimal("0.00")) - (self.total_pago or Decimal("0.00"))
+        saldo = (self.total or Decimal("0.00")) - (self.total_pago or Decimal("0.00"))
+        return max(saldo, Decimal("0.00"))
 
     def clean(self):
         # valida fluxo operacional (igual ao teu, só mais compacto)
@@ -348,5 +349,6 @@ class Recibo(models.Model):
 
     def __str__(self):
         return f"Recibo {self.id} - Pedido {self.pedido_id} - Total: {self.total_pago}"
+
 
 
