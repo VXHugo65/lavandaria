@@ -15,6 +15,19 @@
     <!-- Título -->
     <div class="mb-8">
         <h1 class="text-3xl font-bold mb-2">CRM Pós-Venda</h1>
+        <div class="mt-2 flex items-center gap-2">
+            <span class="text-xs text-gray-500">Lavandaria:</span>
+        
+            {% if lavandaria %}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                    {{ lavandaria.nome }}
+                </span>
+            {% else %}
+                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-200 text-gray-700">
+                    Todas
+                </span>
+            {% endif %}
+        </div>
         <a href="{% url 'admin:index' %}">&larr; voltar</a>
     </div>
 
@@ -223,3 +236,4 @@
 
 </body>
 </html>
+
