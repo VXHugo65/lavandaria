@@ -1,49 +1,45 @@
-from django.db import migrations
+from django.db import migrations, connection
 
 
-SQL = """
--- 1) Garante colunas novas no core_pedido (não destrutivo)
-ALTER TABLE core_pedido
-    ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(20);
+def forwards(apps, schema_editor):
+    if connection.vendor != "postgresql":
+        # Se não for PostgreSQL (ex: SQLite), não executa nada
+        return
 
-ALTER TABLE core_pedido
-    ADD COLUMN IF NOT EXISTS total_pago NUMERIC(10,2) NOT NULL DEFAULT 0;
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            ALTER TABLE core_pedido
+                ADD COLUMN IF NOT EXISTS status_pagamento VARCHAR(20);
+        """)
 
--- 2) Backfill total_pago a partir de core_pagamentopedido (se existir)
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema = 'public' AND table_name = 'core_pagamentopedido'
-    ) THEN
-        UPDATE core_pedido p
-        SET total_pago = COALESCE((
-            SELECT SUM(pp.valor)
-            FROM core_pagamentopedido pp
-            WHERE pp.pedido_id = p.id
-        ), 0);
-    ELSE
-        -- Se não existir a tabela de pagamentos, mantém total_pago=0 (default)
-        UPDATE core_pedido SET total_pago = COALESCE(total_pago, 0);
-    END IF;
-END $$;
+        cursor.execute("""
+            ALTER TABLE core_pedido
+                ADD COLUMN IF NOT EXISTS total_pago NUMERIC(10,2) NOT NULL DEFAULT 0;
+        """)
 
--- 3) Backfill status_pagamento coerente com total / total_pago
-UPDATE core_pedido
-SET status_pagamento = CASE
-    WHEN COALESCE(total_pago, 0) >= COALESCE(total, 0) AND COALESCE(total, 0) > 0 THEN 'pago'
-    WHEN COALESCE(total_pago, 0) > 0 THEN 'parcial'
-    ELSE 'aberto'
-END
-WHERE status_pagamento IS NULL OR status_pagamento = '';
+        cursor.execute("""
+            UPDATE core_pedido p
+            SET total_pago = COALESCE((
+                SELECT SUM(pp.valor)
+                FROM core_pagamentopedido pp
+                WHERE pp.pedido_id = p.id
+            ), 0);
+        """)
 
--- 4) (Opcional) Sincroniza o boolean pago sem destruir histórico
--- Só marca como TRUE quando estiver quitado.
-UPDATE core_pedido
-SET pago = TRUE
-WHERE status_pagamento = 'pago' AND pago = FALSE;
-"""
+        cursor.execute("""
+            UPDATE core_pedido
+            SET status_pagamento = CASE
+                WHEN COALESCE(total_pago, 0) >= COALESCE(total, 0) AND COALESCE(total, 0) > 0 THEN 'pago'
+                WHEN COALESCE(total_pago, 0) > 0 THEN 'parcial'
+                ELSE 'aberto'
+            END;
+        """)
+
+        cursor.execute("""
+            UPDATE core_pedido
+            SET pago = TRUE
+            WHERE status_pagamento = 'pago' AND pago = FALSE;
+        """)
 
 
 class Migration(migrations.Migration):
@@ -53,5 +49,5 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.RunSQL(SQL, reverse_sql=migrations.RunSQL.noop),
+        migrations.RunPython(forwards, migrations.RunPython.noop),
     ]

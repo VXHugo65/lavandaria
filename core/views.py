@@ -14,6 +14,7 @@ import io
 import base64
 import os
 from django.conf import settings
+from .models import MovimentacaoPontos
 
 from decimal import Decimal
 from django.db.models import DecimalField, Value
@@ -118,18 +119,48 @@ def imprimir_recibo_imagem(request, pedido_id):
     if ultimo_metodo_pagamento:
         ultimo_metodo_pagamento_label = ultimo_metodo_pagamento.replace("_", " ").title()
 
-    pontos_do_cliente = Pedido.objects.filter(cliente=pedido.cliente).count()
+    mov = MovimentacaoPontos.objects.filter(
+        pedido=pedido,
+        tipo="ganho"
+    ).first()
+
+    # 🎯 Verificar se o pagamento foi feito com pontos
+    pagamento_pontos = PagamentoPedido.objects.filter(
+        pedido=pedido,
+        metodo_pagamento="pontos"
+    ).exists()
+
+    # 🎯 Pontos só aparecem se NÃO for pagamento com pontos
+    if pagamento_pontos:
+        pontos_totais = 0
+        equivalente_mzn = Decimal("0.00")
+    else:
+        pontos_totais = pedido.cliente.pontos
+        equivalente_mzn = Decimal(pontos_totais) * Decimal("0.10")
+
+    pontos_ganhos = mov.pontos if mov else 0
+
+    pontos_totais = pedido.cliente.pontos
+    equivalente_mzn = Decimal(pontos_totais) * Decimal("0.10")
+
+
+
 
     recibo_texto = render_to_string("core/recibo_termico.txt", {
         "pedido": pedido,
         "pedidos_nao_pagos": pedidos_nao_pagos,
         "total_em_divida": total_em_divida,
-        "pontos_do_cliente": pontos_do_cliente,
+
 
         "valor_pago": valor_pago,
         "saldo": saldo,
         "ultimo_metodo_pagamento": ultimo_metodo_pagamento,
         "ultimo_metodo_pagamento_label": ultimo_metodo_pagamento_label,
+
+        # 🎁 pontos
+        "pontos_ganhos": pontos_ganhos,
+        "pontos_totais": pontos_totais,
+        "equivalente_mzn": equivalente_mzn,
     })
 
     # Ajuste do tamanho da fonte e cálculo da altura

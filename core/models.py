@@ -1,4 +1,4 @@
-from django.db import models
+from datetime import timedelta
 from django.contrib.auth.models import User, Group, Permission
 from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.db.models import Sum
 from decimal import Decimal
+
 
 
 # Modelo para Lavandarias
@@ -95,10 +96,63 @@ class Cliente(models.Model):
     nome = models.CharField(max_length=255)
     telefone = models.CharField(max_length=20, null=True, blank=True)
     endereco = models.TextField(null=True, blank=True)
+    pontos = models.PositiveIntegerField(default=0)
+
+    def pontos_validos(self):
+        tres_meses_atras = timezone.now() - timedelta(days=90)
+
+        pontos_ganhos = self.movimentacoes_pontos.filter(
+            tipo="ganho",
+            criado_em__gte=tres_meses_atras
+        ).aggregate(total=Sum("pontos"))["total"] or 0
+
+        pontos_usados = abs(
+            self.movimentacoes_pontos.filter(
+                tipo="uso"
+            ).aggregate(total=Sum("pontos"))["total"] or 0
+        )
+
+        return max(0, pontos_ganhos + pontos_usados)
 
     def __str__(self):
         return f"{self.nome} - {self.telefone}"
 
+
+# Modelo para historico de pontos
+class MovimentacaoPontos(models.Model):
+
+    TIPO_CHOICES = [
+        ("ganho", "Ganho"),
+        ("uso", "Uso"),
+        ("expiracao", "Expiração"),
+        ("ajuste", "Ajuste Manual"),
+    ]
+
+    cliente = models.ForeignKey(
+        "Cliente",
+        on_delete=models.CASCADE,
+        related_name="movimentacoes_pontos"
+    )
+
+    pedido = models.ForeignKey(
+        "Pedido",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    tipo = models.CharField(max_length=20, choices=TIPO_CHOICES)
+    pontos = models.IntegerField()
+    criado_em = models.DateTimeField(auto_now_add=True)
+    criado_por = models.ForeignKey(
+        "Funcionario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    def __str__(self):
+        return f"{self.cliente} - {self.tipo} - {self.pontos} pts"
 
 # Modelo para Pedidos
 class Pedido(models.Model):
@@ -175,26 +229,118 @@ class Pedido(models.Model):
         if not self.pk:
             return
 
-        soma = self.pagamentos.aggregate(s=Sum("valor"))["s"] or Decimal("0.00")
+        soma = self.pagamentos.aggregate(
+            s=Sum("valor")
+        )["s"] or Decimal("0.00")
+
         soma = Decimal(soma)
+
         self.total_pago = min(soma, self.total or Decimal("0.00"))
+
+        pedido_ficou_pago = False
 
         if soma <= 0:
             self.status_pagamento = "nao_pago"
             self.pago = False
             self.data_pagamento = None
+
         elif soma < (self.total or Decimal("0.00")):
             self.status_pagamento = "parcial"
             self.pago = False
+
             ultimo = self.pagamentos.order_by("-pago_em").first()
             self.data_pagamento = ultimo.pago_em if ultimo else self.data_pagamento
+
         else:
             self.status_pagamento = "pago"
             self.pago = True
+            pedido_ficou_pago = True
+
             ultimo = self.pagamentos.order_by("-pago_em").first()
             self.data_pagamento = ultimo.pago_em if ultimo else timezone.now()
 
-        self.save(update_fields=["total_pago", "status_pagamento", "pago", "data_pagamento"])
+        self.save(update_fields=[
+            "total_pago",
+            "status_pagamento",
+            "pago",
+            "data_pagamento"
+        ])
+
+        # ✅ GERAR PONTOS SOMENTE UMA VEZ
+        if pedido_ficou_pago:
+
+            from .models import MovimentacaoPontos
+
+            # verificar se já gerou pontos
+            if MovimentacaoPontos.objects.filter(
+                    pedido=self,
+                    tipo="ganho"
+            ).exists():
+                return
+
+            # pagamento real (excluir pontos)
+            pagamento_real = self.pagamentos.exclude(
+                metodo_pagamento="pontos"
+            ).aggregate(
+                total=Sum("valor")
+            )["total"] or Decimal("0.00")
+
+            pagamento_real = Decimal(pagamento_real)
+
+            if pagamento_real > 0:
+                pontos_ganhos = int(pagamento_real)
+
+                self.cliente.pontos = (
+                        self.cliente.pontos + pontos_ganhos
+                )
+
+                self.cliente.save(update_fields=["pontos"])
+
+                MovimentacaoPontos.objects.create(
+                    cliente=self.cliente,
+                    pedido=self,
+                    tipo="ganho",
+                    pontos=pontos_ganhos
+                )
+
+
+
+    def deduzir_pontos(self, quantidade_pontos, funcionario=None):
+
+        quantidade_pontos = int(quantidade_pontos)
+
+        if quantidade_pontos <= 0:
+            raise ValidationError("Quantidade de pontos inválida.")
+
+        cliente = self.cliente
+
+        with transaction.atomic():
+
+            # Recarregar cliente da base (evita race condition)
+            cliente = type(cliente).objects.select_for_update().get(pk=cliente.pk)
+
+            if cliente.pontos < quantidade_pontos:
+                raise ValidationError("Cliente não possui pontos suficientes.")
+
+            from .models import MovimentacaoPontos
+
+            # ✅ evitar dedução duplicada
+            if MovimentacaoPontos.objects.filter(
+                    pedido=self,
+                    tipo="uso"
+            ).exists():
+                return
+
+            cliente.pontos -= quantidade_pontos
+            cliente.save(update_fields=["pontos"])
+
+            MovimentacaoPontos.objects.create(
+                cliente=cliente,
+                pedido=self,
+                tipo="uso",
+                pontos=-quantidade_pontos,
+                criado_por=funcionario
+            )
 
     @transaction.atomic
     def registrar_pagamento(self, *, valor, metodo_pagamento, funcionario=None, referencia=None):
@@ -221,6 +367,48 @@ class Pedido(models.Model):
 
         pedido.recalcular_pagamentos()
         return pedido
+
+    @transaction.atomic
+    def pagar_com_pontos(self, quantidade_pontos, funcionario=None):
+
+        quantidade_pontos = int(quantidade_pontos)
+
+        if quantidade_pontos <= 0:
+            raise ValidationError("Quantidade de pontos inválida.")
+
+        if quantidade_pontos > self.cliente.pontos:
+            raise ValidationError("Cliente não tem pontos suficientes.")
+
+        valor_em_mzn = Decimal(quantidade_pontos) * Decimal("0.10")
+
+        if valor_em_mzn > self.saldo:
+            raise ValidationError("Valor em pontos excede o saldo do pedido.")
+
+        # 1️⃣ Criar pagamento como se fosse dinheiro
+        PagamentoPedido.objects.create(
+            pedido=self,
+            valor=valor_em_mzn,
+            metodo_pagamento="pontos",
+            criado_por=funcionario,
+        )
+
+        # 2️⃣ Subtrair pontos do cliente
+        self.cliente.pontos -= quantidade_pontos
+        self.cliente.save(update_fields=["pontos"])
+
+        # 3️⃣ Registrar movimentação
+        MovimentacaoPontos.objects.create(
+            cliente=self.cliente,
+            pedido=self,
+            tipo="uso",
+            pontos=-quantidade_pontos,
+            criado_por=funcionario,
+        )
+
+        # 4️⃣ Recalcular status
+        self.recalcular_pagamentos()
+
+        return self
 
     def __str__(self):
         return f"Pedido {self.id} - {self.cliente} - {self.get_status_display()}"
@@ -268,7 +456,9 @@ class PagamentoPedido(models.Model):
         ('conta_movel', 'Conta Movel'),
         ('mpesa', 'M-Pesa'),
         ('emola', 'e-Mola'),
+        ("pontos", "Pontos Fidelidade"),
         ('outro', 'Outro'),
+
     ]
 
     pedido = models.ForeignKey("Pedido", on_delete=models.CASCADE, related_name="pagamentos")
@@ -286,8 +476,41 @@ class PagamentoPedido(models.Model):
             raise ValidationError({"valor": "Pagamento deve ser maior que 0."})
 
     def save(self, *args, **kwargs):
+
         self.clean()
+
+        is_pagamento_pontos = self.metodo_pagamento == "pontos"
+
         super().save(*args, **kwargs)
+
+        if is_pagamento_pontos and self.pedido_id:
+
+            cliente = self.pedido.cliente
+
+            # Conversão: 1 MZN = 10 pontos
+            pontos_usados = int(self.valor * 10)
+
+            # ✅ Verificar saldo de pontos
+            if cliente.pontos < pontos_usados:
+                raise ValidationError("Cliente não possui pontos suficientes.")
+
+            from .models import MovimentacaoPontos
+
+            # ✅ Evitar duplicação de dedução
+            if not MovimentacaoPontos.objects.filter(
+                    pedido=self.pedido,
+                    tipo="uso"
+            ).exists():
+                cliente.pontos = max(0, cliente.pontos - pontos_usados)
+                cliente.save(update_fields=["pontos"])
+
+                MovimentacaoPontos.objects.create(
+                    cliente=cliente,
+                    pedido=self.pedido,
+                    tipo="uso",
+                    pontos=-pontos_usados,
+                    criado_por=self.criado_por
+                )
 
     def __str__(self):
         return f"Pagamento {self.id} - Pedido {self.pedido_id} - {self.valor}"

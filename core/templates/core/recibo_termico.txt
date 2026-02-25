@@ -12,11 +12,17 @@ VD          N.{{ pedido.id }}
 Factura     N.{{ pedido.id }}
 {% endif %}
 Data: {{ pedido.criado_em|date:"d/m/Y H:i" }}
-Pts: {{ pontos_do_cliente }}
+----------------------------------------------------------------
+PONTOS FIDELIDADE (1000pts = 100MZN)
+Ganhos nesta pedido: {{ pontos_ganhos }} pts
+Total acumulado: {{ pontos_totais }} pts
+Equivalente: {{ equivalente_mzn }} MZN
 
-Total:               {{ pedido.total|stringformat:".2f" }} MT
-Pago:               {{ valor_pago|stringformat:".2f" }} MT
-Saldo:               {{ saldo|stringformat:".2f" }} MT
+----------------------------------------------------------------
+
+Total:               {{ pedido.total|stringformat:".2f" }} MZN
+Pago:               {{ valor_pago|stringformat:".2f" }} MZN
+Saldo:               {{ saldo|stringformat:".2f" }} MZN
 
 {% if pedido.status_pagamento == "pago" %}
 Pagamento: QUITADO
@@ -29,7 +35,7 @@ Pagamento: EM ABERTO
 {% if pedido.pagamentos.exists %}
 Detalhes de Pagamento:
 {% for pagamento in pedido.pagamentos.all %}
-{{ pagamento.valor|stringformat:".2f" }} MT  {{ pagamento.get_metodo_pagamento_display }}
+{{ pagamento.valor|stringformat:".2f" }} MZN  {{ pagamento.get_metodo_pagamento_display }}
 {% endfor %}
 {% endif %}
 
@@ -44,9 +50,9 @@ Descricao                       quant.                        Total
 {{ item.descricao }}
 {% endfor %}
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-Total:                                                           {{ pedido.total|stringformat:".2f" }} MT
-Pago:                                                            {{ valor_pago|stringformat:".2f" }} MT
-Saldo:                                                           {{ saldo|stringformat:".2f" }} MT
+Total:                                                           {{ pedido.total|stringformat:".2f" }} MZN
+Pago:                                                            {{ valor_pago|stringformat:".2f" }} MZN
+Saldo:                                                           {{ saldo|stringformat:".2f" }} MZN
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
                                   IVA INCLUSO
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -73,9 +79,9 @@ Pedidos com saldo em aberto (ultimos 3)
 Nr.Pdd                        Data                                Saldo
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 {% for p in pedidos_nao_pagos %}
-{{ p.id }}                      {{ p.criado_em|date:"d/m/Y" }}              {{p.saldo|stringformat:".2f" }} MT
+{{ p.id }}                      {{ p.criado_em|date:"d/m/Y" }}              {{p.saldo|stringformat:".2f" }} MZN
 {% empty %}
-Nenhum pedido encontrado.
+
 {% endfor %}
 {% if total_em_divida %}
 Total em divida: {{ total_em_divida|stringformat:".2f" }}
