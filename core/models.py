@@ -98,6 +98,20 @@ class Cliente(models.Model):
     endereco = models.TextField(null=True, blank=True)
     pontos = models.PositiveIntegerField(default=0)
 
+    # Total acumulado gasto (para rastrear quando aplicar desconto)
+    total_gasto_acumulado = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Total gasto acumulado para controle de descontos de fidelidade"
+    )
+
+    # Último marco de desconto aplicado
+    ultimo_marco_desconto = models.PositiveIntegerField(
+        default=0,
+        help_text="Último múltiplo de 5000 Mts que gerou desconto"
+    )
+
     def pontos_validos(self):
         tres_meses_atras = timezone.now() - timedelta(days=90)
 
@@ -113,6 +127,99 @@ class Cliente(models.Model):
         )
 
         return max(0, pontos_ganhos + pontos_usados)
+
+    def aplicar_desconto_fidelidade(self, valor_gasto=None):
+        """
+        Aplica desconto de fidelidade baseado no total gasto acumulado.
+        A cada 5000 Mts gastos (50.000 pontos acumulados), dá 250 Mts de desconto.
+        Os pontos são consumidos ao aplicar o desconto.
+        """
+        from .models import MovimentacaoPontos
+
+        LIMITE_GASTO = Decimal("5000.00")  # 5000 Mts
+        DESCONTO_MZN = Decimal("250.00")  # 250 Mts
+        PONTOS_POR_MARCO = 50000  # 50.000 pontos = 5.000 Mts gastos
+
+        # Atualiza o total gasto acumulado se um valor foi fornecido
+        if valor_gasto:
+            self.total_gasto_acumulado += Decimal(str(valor_gasto))
+            self.save(update_fields=["total_gasto_acumulado"])
+
+        # Calcula quantos marcos de desconto foram atingidos baseado no gasto
+        marcos_atingidos = int(self.total_gasto_acumulado // LIMITE_GASTO)
+
+        # Verifica se novos marcos foram atingidos
+        if marcos_atingidos > self.ultimo_marco_desconto:
+            novos_marcos = marcos_atingidos - self.ultimo_marco_desconto
+            desconto_total = DESCONTO_MZN * novos_marcos
+
+            # Calcula quantos pontos precisa consumir
+            pontos_a_consumir = novos_marcos * PONTOS_POR_MARCO
+
+            # Verifica se tem pontos suficientes
+            if self.pontos >= pontos_a_consumir:
+                # CONSONE os pontos
+                self.pontos -= pontos_a_consumir
+
+                # Registra a movimentação de consumo
+                MovimentacaoPontos.objects.create(
+                    cliente=self,
+                    tipo="uso",
+                    pontos=-pontos_a_consumir,
+                    criado_em=timezone.now()
+                )
+
+                # Atualiza o último marco
+                self.ultimo_marco_desconto = marcos_atingidos
+                self.save(update_fields=["pontos", "ultimo_marco_desconto"])
+
+                return desconto_total
+            else:
+                # Não tem pontos suficientes para o desconto
+                # Pode registrar um log ou notificação aqui
+                return Decimal("0.00")
+
+        return Decimal("0.00")
+
+    def expirar_pontos(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        from django.db.models import Sum
+        from .models import MovimentacaoPontos
+
+        limite = timezone.now() - timedelta(days=90)
+
+        # Pontos ganhos há mais de 90 dias
+        pontos_antigos = self.movimentacoes_pontos.filter(
+            tipo="ganho",
+            criado_em__lt=limite
+        ).aggregate(total=Sum("pontos"))["total"] or 0
+
+        if pontos_antigos <= 0:
+            return
+
+        # Evitar expirar duas vezes os mesmos pontos
+        pontos_ja_expirados = abs(
+            self.movimentacoes_pontos.filter(
+                tipo="expiracao"
+            ).aggregate(total=Sum("pontos"))["total"] or 0
+        )
+
+        pontos_para_expirar = pontos_antigos - pontos_ja_expirados
+
+        if pontos_para_expirar <= 0:
+            return
+
+        # Atualizar saldo do cliente
+        self.pontos = max(0, self.pontos - pontos_para_expirar)
+        self.save(update_fields=["pontos"])
+
+        # Registrar movimentação
+        MovimentacaoPontos.objects.create(
+            cliente=self,
+            tipo="expiracao",
+            pontos=-pontos_para_expirar
+        )
 
     def __str__(self):
         return f"{self.nome} - {self.telefone}"
@@ -156,9 +263,10 @@ class MovimentacaoPontos(models.Model):
 
 # Modelo para Pedidos
 class Pedido(models.Model):
+
     STATUS_CHOICES = [
         ("pendente", "Pendente"),
-        ("completo","Completo"),
+        ("completo", "Completo"),
         ("pronto", "Pronto"),
         ("entregue", "Entregue"),
     ]
@@ -169,65 +277,142 @@ class Pedido(models.Model):
         ("pago", "Pago"),
     ]
 
-    cliente = models.ForeignKey("Cliente", on_delete=models.CASCADE, related_name="pedidos")
-    lavandaria = models.ForeignKey("Lavandaria", on_delete=models.CASCADE, related_name="pedidos")
-    funcionario = models.ForeignKey(
-        "Funcionario", on_delete=models.SET_NULL, related_name="pedidos", null=True, blank=True
+    cliente = models.ForeignKey(
+        "Cliente",
+        on_delete=models.CASCADE,
+        related_name="pedidos"
     )
 
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pendente")
+    lavandaria = models.ForeignKey(
+        "Lavandaria",
+        on_delete=models.CASCADE,
+        related_name="pedidos"
+    )
+
+    funcionario = models.ForeignKey(
+        "Funcionario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pedidos"
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="pendente"
+    )
+
     criado_em = models.DateTimeField(auto_now_add=True)
 
-    total = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    total = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
 
-    # LEGACY (não edite manualmente; é derivado da soma dos pagamentos)
+    desconto = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    total_pago = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00")
+    )
+
+    status_pagamento = models.CharField(
+        max_length=20,
+        choices=STATUS_PAGAMENTO_CHOICES,
+        default="nao_pago"
+    )
+
     pago = models.BooleanField(default=False)
     data_pagamento = models.DateTimeField(null=True, blank=True)
-
-    # NOVO
-    status_pagamento = models.CharField(
-        max_length=20, choices=STATUS_PAGAMENTO_CHOICES, default="nao_pago"
+    cabides_trazidos = models.PositiveIntegerField(default=0,
+        help_text="Quantidade de cabides trazidos pelo cliente (mínimo 20 para desconto)"
     )
-    total_pago = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    desconto_cabides_aplicado = models.BooleanField(default=False,
+        help_text="Indica se o desconto por cabides já foi aplicado"
+    )
+    desconto_cabides = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        help_text="Desconto aplicado por cabides (140 Mts por 20 cabides)"
+    )
+
+
+
+    # =============================
+    # PROPRIEDADES FINANCEIRAS
+    # =============================
+
+    # @property
+    # def total_final(self):
+    #     total = self.total or Decimal("0.00")
+    #     desconto = self.desconto or Decimal("0.00")
+    #     return max(total - desconto, Decimal("0.00"))
 
     @property
-    def saldo(self) -> Decimal:
-        saldo = (self.total or Decimal("0.00")) - (self.total_pago or Decimal("0.00"))
+    def total_final(self):
+        total = self.total or Decimal("0.00")
+
+        # Soma todos os descontos
+        desconto_total = Decimal("0.00")
+        desconto_total += self.desconto or Decimal("0.00")  # Desconto geral
+        desconto_total += self.desconto_cabides or Decimal("0.00")  # Desconto cabides
+
+        return max(total - desconto_total, Decimal("0.00"))
+
+    @property
+    def saldo(self):
+        saldo = self.total_final - (self.total_pago or Decimal("0.00"))
         return max(saldo, Decimal("0.00"))
 
+    # =============================
+    # VALIDAÇÕES
+    # =============================
+
     def clean(self):
-        # valida fluxo operacional (igual ao teu, só mais compacto)
-        if self.pk:
-            pedido_original = Pedido.objects.get(pk=self.pk)
-            status_original = pedido_original.status
-            status_novo = self.status
 
-            transicoes = {
-                "pendente": ["completo"],
-                "completo": ["pronto"],
-                "pronto": ["entregue"],
-                "entregue": [],
-            }
-            if status_novo != status_original and status_novo not in transicoes.get(status_original, []):
-                raise ValidationError(
-                    {"status": f"Transição inválida: {status_original} → {status_novo}"}
-                )
+        if self.total < 0:
+            raise ValidationError("O total não pode ser negativo.")
 
-        if self.total is not None and self.total < 0:
-            raise ValidationError({"total": "O total não pode ser negativo."})
+        if self.desconto < 0:
+            raise ValidationError("O desconto não pode ser negativo.")
 
-    def save(self, *args, **kwargs):
-        self.clean()
-        super().save(*args, **kwargs)
+        if self.desconto > self.total:
+            raise ValidationError("O desconto não pode ser maior que o total.")
+
+    # =============================
+    # ATUALIZAR TOTAL DOS ITENS
+    # =============================
 
     def atualizar_total(self):
-        self.total = sum((item.preco_total or 0) for item in self.itens.all())
+        total = self.itens.aggregate(
+            s=Sum("preco_total")
+        )["s"] or Decimal("0.00")
+
+        self.total = total
         self.save(update_fields=["total"])
         self.recalcular_pagamentos()
 
+    # No momento de finalizar o pedido (antes de calcular o total)
+    def calcular_total_com_desconto(self):
+        # Verifica se o cliente quer usar o desconto
+        if self.cliente.pontos >= 50000:  # Tem pontos suficientes
+            desconto = self.cliente.aplicar_desconto_fidelidade()
+            self.desconto = desconto  # Aplica no pedido
+            self.save(update_fields=["desconto"])
+
+    # =============================
+    # RECALCULAR PAGAMENTOS
+    # =============================
+
     def recalcular_pagamentos(self):
-        if not self.pk:
-            return
 
         soma = self.pagamentos.aggregate(
             s=Sum("valor")
@@ -235,26 +420,30 @@ class Pedido(models.Model):
 
         soma = Decimal(soma)
 
-        self.total_pago = min(soma, self.total or Decimal("0.00"))
+        total_final = self.total_final
 
-        pedido_ficou_pago = False
+        # nunca permitir ultrapassar total
+        self.total_pago = min(soma, total_final)
 
-        if soma <= 0:
+        # ============================
+        # Atualizar status pagamento
+        # ============================
+
+        if self.total_pago <= 0:
             self.status_pagamento = "nao_pago"
             self.pago = False
             self.data_pagamento = None
 
-        elif soma < (self.total or Decimal("0.00")):
+        elif self.total_pago < total_final:
             self.status_pagamento = "parcial"
             self.pago = False
 
             ultimo = self.pagamentos.order_by("-pago_em").first()
-            self.data_pagamento = ultimo.pago_em if ultimo else self.data_pagamento
+            self.data_pagamento = ultimo.pago_em if ultimo else None
 
         else:
             self.status_pagamento = "pago"
             self.pago = True
-            pedido_ficou_pago = True
 
             ultimo = self.pagamentos.order_by("-pago_em").first()
             self.data_pagamento = ultimo.pago_em if ultimo else timezone.now()
@@ -266,96 +455,73 @@ class Pedido(models.Model):
             "data_pagamento"
         ])
 
-        # ✅ GERAR PONTOS SOMENTE UMA VEZ
-        if pedido_ficou_pago:
+        # ============================
+        # 🎯 GERAR PONTOS E DESCONTOS (UMA VEZ SÓ)
+        # ============================
 
-            from .models import MovimentacaoPontos
+        from .models import MovimentacaoPontos
 
-            # verificar se já gerou pontos
-            if MovimentacaoPontos.objects.filter(
+        if self.status_pagamento == "pago":
+
+            # evitar duplicação
+            if not MovimentacaoPontos.objects.filter(
                     pedido=self,
                     tipo="ganho"
             ).exists():
-                return
 
-            # pagamento real (excluir pontos)
-            pagamento_real = self.pagamentos.exclude(
-                metodo_pagamento="pontos"
-            ).aggregate(
-                total=Sum("valor")
-            )["total"] or Decimal("0.00")
+                pagamento_real = min(self.total_pago, self.total_final)
 
-            pagamento_real = Decimal(pagamento_real)
+                if pagamento_real > 0:
+                    pontos_ganhos = int(pagamento_real * 10)  # 10 pontos por Mts
 
-            if pagamento_real > 0:
-                pontos_ganhos = int(pagamento_real)
+                    with transaction.atomic():
+                        cliente = type(self.cliente).objects.select_for_update().get(
+                            pk=self.cliente.pk
+                        )
 
-                self.cliente.pontos = (
-                        self.cliente.pontos + pontos_ganhos
-                )
+                        # Adiciona pontos
+                        cliente.pontos += pontos_ganhos
 
-                self.cliente.save(update_fields=["pontos"])
+                        # Verifica se já foi aplicado desconto para este pedido
+                        if not hasattr(self, '_desconto_aplicado') or not self._desconto_aplicado:
+                            # Aplica desconto de fidelidade baseado no valor gasto
+                            desconto_fidelidade = cliente.aplicar_desconto_fidelidade(pagamento_real)
 
-                MovimentacaoPontos.objects.create(
-                    cliente=self.cliente,
-                    pedido=self,
-                    tipo="ganho",
-                    pontos=pontos_ganhos
-                )
+                            if desconto_fidelidade > 0:
+                                # Atualiza o desconto no pedido
+                                self.desconto += desconto_fidelidade
+                                self._desconto_aplicado = True
 
+                                # Salva o pedido com o novo desconto
+                                self.save(update_fields=["desconto"])
 
+                        cliente.save(update_fields=["pontos"])
 
-    def deduzir_pontos(self, quantidade_pontos, funcionario=None):
+                        MovimentacaoPontos.objects.create(
+                            cliente=cliente,
+                            pedido=self,
+                            tipo="ganho",
+                            pontos=pontos_ganhos,
+                        )
 
-        quantidade_pontos = int(quantidade_pontos)
-
-        if quantidade_pontos <= 0:
-            raise ValidationError("Quantidade de pontos inválida.")
-
-        cliente = self.cliente
-
-        with transaction.atomic():
-
-            # Recarregar cliente da base (evita race condition)
-            cliente = type(cliente).objects.select_for_update().get(pk=cliente.pk)
-
-            if cliente.pontos < quantidade_pontos:
-                raise ValidationError("Cliente não possui pontos suficientes.")
-
-            from .models import MovimentacaoPontos
-
-            # ✅ evitar dedução duplicada
-            if MovimentacaoPontos.objects.filter(
-                    pedido=self,
-                    tipo="uso"
-            ).exists():
-                return
-
-            cliente.pontos -= quantidade_pontos
-            cliente.save(update_fields=["pontos"])
-
-            MovimentacaoPontos.objects.create(
-                cliente=cliente,
-                pedido=self,
-                tipo="uso",
-                pontos=-quantidade_pontos,
-                criado_por=funcionario
-            )
+    # =============================
+    # REGISTRAR PAGAMENTO
+    # =============================
 
     @transaction.atomic
     def registrar_pagamento(self, *, valor, metodo_pagamento, funcionario=None, referencia=None):
+
         valor = Decimal(valor)
+
         if valor <= 0:
-            raise ValidationError("Valor do pagamento deve ser > 0.")
+            raise ValidationError("Valor do pagamento deve ser maior que zero.")
 
         pedido = Pedido.objects.select_for_update().get(pk=self.pk)
 
-        pago_ate_agora = pedido.pagamentos.aggregate(s=Sum("valor"))["s"] or Decimal("0.00")
-        pago_ate_agora = Decimal(pago_ate_agora)
+        saldo_atual = pedido.saldo
 
-        saldo = (pedido.total or Decimal("0.00")) - pago_ate_agora
-        if valor > saldo:
-            raise ValidationError(f"Pagamento excede o saldo. Saldo atual: {saldo}")
+        if valor > saldo_atual:
+            raise ValidationError(f"Pagamento excede o saldo atual ({saldo_atual}).")
 
         PagamentoPedido.objects.create(
             pedido=pedido,
@@ -368,50 +534,8 @@ class Pedido(models.Model):
         pedido.recalcular_pagamentos()
         return pedido
 
-    @transaction.atomic
-    def pagar_com_pontos(self, quantidade_pontos, funcionario=None):
-
-        quantidade_pontos = int(quantidade_pontos)
-
-        if quantidade_pontos <= 0:
-            raise ValidationError("Quantidade de pontos inválida.")
-
-        if quantidade_pontos > self.cliente.pontos:
-            raise ValidationError("Cliente não tem pontos suficientes.")
-
-        valor_em_mzn = Decimal(quantidade_pontos) * Decimal("0.10")
-
-        if valor_em_mzn > self.saldo:
-            raise ValidationError("Valor em pontos excede o saldo do pedido.")
-
-        # 1️⃣ Criar pagamento como se fosse dinheiro
-        PagamentoPedido.objects.create(
-            pedido=self,
-            valor=valor_em_mzn,
-            metodo_pagamento="pontos",
-            criado_por=funcionario,
-        )
-
-        # 2️⃣ Subtrair pontos do cliente
-        self.cliente.pontos -= quantidade_pontos
-        self.cliente.save(update_fields=["pontos"])
-
-        # 3️⃣ Registrar movimentação
-        MovimentacaoPontos.objects.create(
-            cliente=self.cliente,
-            pedido=self,
-            tipo="uso",
-            pontos=-quantidade_pontos,
-            criado_por=funcionario,
-        )
-
-        # 4️⃣ Recalcular status
-        self.recalcular_pagamentos()
-
-        return self
-
     def __str__(self):
-        return f"Pedido {self.id} - {self.cliente} - {self.get_status_display()}"
+        return f"Pedido {self.id} - {self.cliente}"
 
     class Meta:
         ordering = ["-criado_em"]
@@ -448,72 +572,115 @@ class ItemPedido(models.Model):
         return f"{item_nome} - {self.quantidade}x - Total: {self.preco_total}"
 
 
+from decimal import Decimal
+from django.db import models, transaction
+from django.core.exceptions import ValidationError
+from django.utils import timezone
+
+
 class PagamentoPedido(models.Model):
 
     METODO_PAGAMENTO_CHOICES = [
-        ('numerario', 'Numerario'),
-        ('pos', 'POS (Cartao)'),
-        ('conta_movel', 'Conta Movel'),
-        ('mpesa', 'M-Pesa'),
-        ('emola', 'e-Mola'),
-        ("pontos", "Pontos Fidelidade"),
-        ('outro', 'Outro'),
-
+        ("numerario", "Numerario"),
+        ("pos", "POS (Cartão)"),
+        ("mpesa", "M-Pesa"),
+        ("emola", "e-Mola"),
+        ("conta_movel", "Conta Movel"),
+        ("transferencia", "Transferência"),
+        ("outro", "Outro"),
     ]
 
-    pedido = models.ForeignKey("Pedido", on_delete=models.CASCADE, related_name="pagamentos")
-    valor = models.DecimalField(max_digits=10, decimal_places=2)
-    metodo_pagamento = models.CharField(max_length=20, choices=METODO_PAGAMENTO_CHOICES)
-    referencia = models.CharField(max_length=80, blank=True, null=True)
-    pago_em = models.DateTimeField(default=timezone.now)
-    criado_por = models.ForeignKey("Funcionario", on_delete=models.SET_NULL, null=True, blank=True)
+    pedido = models.ForeignKey(
+        "Pedido",
+        on_delete=models.CASCADE,
+        related_name="pagamentos"
+    )
 
-    class Meta:
-        ordering = ["-pago_em"]
+    valor = models.DecimalField(
+        max_digits=10,
+        decimal_places=2
+    )
+
+    metodo_pagamento = models.CharField(
+        max_length=20,
+        choices=METODO_PAGAMENTO_CHOICES
+    )
+
+    referencia = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True
+    )
+
+    pago_em = models.DateTimeField(default=timezone.now)
+
+    criado_por = models.ForeignKey(
+        "Funcionario",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+
+    criado_em = models.DateTimeField(auto_now_add=True)
+
+    # =============================
+    # VALIDAÇÕES
+    # =============================
 
     def clean(self):
-        if self.valor is None or self.valor <= 0:
-            raise ValidationError({"valor": "Pagamento deve ser maior que 0."})
 
+        if self.valor is None:
+            raise ValidationError("O valor do pagamento é obrigatório.")
+
+        if self.valor <= 0:
+            raise ValidationError("O valor do pagamento deve ser maior que zero.")
+
+        if not self.pedido_id:
+            return
+
+        # Bloquear pagamento acima do saldo
+        saldo_atual = self.pedido.saldo
+
+        # Se estiver a editar pagamento existente
+        if self.pk:
+            pagamento_original = PagamentoPedido.objects.get(pk=self.pk)
+            saldo_atual += pagamento_original.valor
+
+        if self.valor > saldo_atual:
+            raise ValidationError(
+                f"O pagamento excede o saldo atual ({saldo_atual})."
+            )
+
+    # =============================
+    # SAVE SEGURO
+    # =============================
+
+    @transaction.atomic
     def save(self, *args, **kwargs):
 
-        self.clean()
-
-        is_pagamento_pontos = self.metodo_pagamento == "pontos"
+        self.full_clean()  # executa clean()
 
         super().save(*args, **kwargs)
 
-        if is_pagamento_pontos and self.pedido_id:
+        # Recalcular pagamentos do pedido
+        self.pedido.recalcular_pagamentos()
 
-            cliente = self.pedido.cliente
+    # =============================
+    # DELETE SEGURO
+    # =============================
 
-            # Conversão: 1 MZN = 10 pontos
-            pontos_usados = int(self.valor * 10)
+    @transaction.atomic
+    def delete(self, *args, **kwargs):
 
-            # ✅ Verificar saldo de pontos
-            if cliente.pontos < pontos_usados:
-                raise ValidationError("Cliente não possui pontos suficientes.")
-
-            from .models import MovimentacaoPontos
-
-            # ✅ Evitar duplicação de dedução
-            if not MovimentacaoPontos.objects.filter(
-                    pedido=self.pedido,
-                    tipo="uso"
-            ).exists():
-                cliente.pontos = max(0, cliente.pontos - pontos_usados)
-                cliente.save(update_fields=["pontos"])
-
-                MovimentacaoPontos.objects.create(
-                    cliente=cliente,
-                    pedido=self.pedido,
-                    tipo="uso",
-                    pontos=-pontos_usados,
-                    criado_por=self.criado_por
-                )
+        pedido = self.pedido
+        super().delete(*args, **kwargs)
+        pedido.recalcular_pagamentos()
 
     def __str__(self):
-        return f"Pagamento {self.id} - Pedido {self.pedido_id} - {self.valor}"
+        return f"Pagamento {self.id} - Pedido {self.pedido.id} - {self.valor} MZN"
+
+    class Meta:
+        ordering = ["-pago_em"]
 
 
 # Função para criar grupos e associar permissões
