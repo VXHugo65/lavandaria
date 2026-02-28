@@ -1,5 +1,10 @@
 from django.contrib import admin
 from unfold.admin import ModelAdmin, StackedInline
+# REMOVA ou modifique esta linha:
+# from django import forms
+
+# ADICIONE esta linha:
+from django import forms as django_forms
 from .models import Lavandaria, ItemServico, Servico, Cliente, Pedido, ItemPedido, Funcionario, Recibo, PagamentoPedido
 from django.utils.html import format_html
 from django.contrib.auth.admin import GroupAdmin as BaseGroupAdmin
@@ -20,7 +25,7 @@ from django.http import HttpResponse
 from datetime import datetime
 from django.utils import timezone
 from django.contrib import admin
-from django.contrib.admin import RelatedOnlyFieldListFilter
+from django.contrib.admin import RelatedOnlyFieldListFilter, forms
 from unfold.admin import ModelAdmin, StackedInline
 
 from decimal import Decimal
@@ -388,19 +393,46 @@ def enviar_sms_mozesms(numero, mensagem):
         return False
 
 
+# ===== FORM PERSONALIZADO PARA PEDIDO =====
+class PedidoAdminForm(django_forms.ModelForm):  # ← Use django_forms aqui
+    """
+    Form personalizado para o Pedido no Admin
+    Adiciona campo booleano para desconto de cabides
+    """
+    aplicar_desconto_cabides = django_forms.BooleanField(  # ← Use django_forms aqui
+        required=False,
+        label=" Cliente trouxe 20+ cabides?",
+        help_text="Marque para aplicar desconto de 140 Mts"
+    )
+
+    class Meta:
+        model = Pedido
+        fields = '__all__'
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance and self.instance.pk:
+            self.fields['aplicar_desconto_cabides'].initial = self.instance.desconto_cabides_aplicado
+
+
+
 @admin.register(Pedido)
 class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     import_form_class = ImportForm
     export_form_class = ExportForm
 
+    # ===== NOVO: Usar form personalizado =====
+    form = PedidoAdminForm
+
     list_display = (
         "id", "cliente", "criado_em",
         "status", "status_pagamento",
-        "total", "total_pago", "saldo_admin",
+        "total", "desconto", "desconto_cabides",  # ← ADICIONAR
+        "total_final", "total_pago", "saldo_admin",  # ← total_final aqui
         "botao_imprimir"
     )
-    search_fields = ("cliente__nome", "cliente__telefone", "id","itens__item_de_servico__nome",
-        "itens__descricao",)
+    search_fields = ("cliente__nome", "cliente__telefone", "id", "itens__item_de_servico__nome",
+                     "itens__descricao",)
     list_display_links = ("cliente", "id")
 
     # ❌ Não permitir editar pagamento manualmente
@@ -415,29 +447,33 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
     )
     list_filter_submit = True
 
+    # ===== NOVO: Adicionar fieldset de cabides =====
     fieldsets = (
         ("Detalhes do Pedido", {"fields": ("cliente", "lavandaria", "funcionario", "status")}),
-        ("Totais e Datas", {"fields": ("total", "total_pago", "criado_em")}),
-        ("Pagamento", {"fields": ("status_pagamento", "pago")}),
+        ("Totais e Datas", {"fields": ("total", "desconto", "desconto_cabides", "criado_em")}),
+        ("Pagamento", {"fields": ("status_pagamento", "pago", "total_pago")}),
+        ("Desconto  Cabides", {
+            "fields": ("aplicar_desconto_cabides", "desconto_cabides_aplicado"),
+            "description": "Marque a opção abaixo se o cliente trouxe 20 cabides ou mais (ganha 140 Mts de desconto)"
+        }),
     )
 
     readonly_fields = (
         "criado_em", "funcionario", "lavandaria",
         "total_pago", "status_pagamento",
         "pago",
-        "total",
+        "total","desconto_cabides_aplicado","desconto_cabides","desconto"
     )
     autocomplete_fields = ("cliente",)
 
     # ✅ adiciona pagamentos inline + itens
     inlines = [ItemPedidoInline, PagamentoPedidoInline]
-    
+
     def get_search_results(self, request, queryset, search_term):
         queryset, use_distinct = super().get_search_results(
             request, queryset, search_term
         )
         return queryset.distinct(), use_distinct
-    
 
     def saldo_admin(self, obj):
         return obj.saldo
@@ -484,6 +520,34 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
                 raise ValueError("O funcionário logado não está associado a nenhuma lavandaria.")
         except Funcionario.DoesNotExist:
             raise ValueError("O usuário logado não está associado a nenhum funcionário.")
+
+        # ===== NOVO: Lógica do desconto por cabides =====
+        aplicar_desconto = form.cleaned_data.get('aplicar_desconto_cabides', False)
+
+        if aplicar_desconto and not obj.desconto_cabides_aplicado:
+            # Aplicar desconto de 140 Mts
+            obj.cabides_trazidos = 20
+            obj.desconto_cabides = Decimal("140.00")
+            obj.desconto_cabides_aplicado = True
+
+            self.message_user(
+                request,
+                "✅ Desconto de 140 Mts aplicado por 20 cabides!",
+                level=messages.SUCCESS
+            )
+
+        elif not aplicar_desconto and obj.desconto_cabides_aplicado:
+            # Remover desconto
+            obj.cabides_trazidos = 0
+            obj.desconto_cabides = Decimal("0.00")
+            obj.desconto_cabides_aplicado = False
+
+            self.message_user(
+                request,
+                "⚠️ Desconto de cabides removido.",
+                level=messages.WARNING
+            )
+        # ===== FIM NOVO =====
 
         super().save_model(request, obj, form, change)
 
@@ -549,7 +613,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
                     f"Pedido {pedido.id} não pode ser marcado como completo. "
                     f"Status atual: {pedido.status}"
                 )
-    
+
         if pedidos_processados:
             messages.success(
                 request,
@@ -558,11 +622,9 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
         else:
             messages.warning(request, "Nenhum pedido pôde ser processado.")
 
-
     def marcar_como_pronto(self, request, queryset):
         pedidos_processados = 0
-    
-    
+
         for pedido in queryset:
             if pedido.status == "completo":
                 pedido.status = "pronto"
@@ -574,7 +636,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
                     f"Pedido {pedido.id} não pode ser marcado como pronto. "
                     f"Status atual: {pedido.status}"
                 )
-        
+
         if pedidos_processados:
             messages.success(
                 request,
@@ -583,11 +645,9 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
         else:
             messages.warning(request, "Nenhum pedido pôde ser processado.")
 
-
     def marcar_como_entregue(self, request, queryset):
         pedidos_processados = 0
-    
-    
+
         for pedido in queryset:
             if pedido.status == "pronto":
                 pedido.status = "entregue"
@@ -599,7 +659,7 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
                     f"Pedido {pedido.id} não pode ser marcado como entregue. "
                     f"Status atual: {pedido.status}"
                 )
-        
+
         if pedidos_processados:
             messages.success(
                 request,
@@ -607,15 +667,14 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
             )
         else:
             messages.warning(request, "Nenhum pedido pôde ser processado.")
-    
+
     marcar_como_completo.short_description = ("Marcar como Completo (apenas pendentes)")
     marcar_como_pronto.short_description = "Marcar como Pronto (apenas completo)"
     marcar_como_entregue.short_description = "Marcar como Entregue (apenas prontos)"
 
-
     def enviar_sms_pedido_pronto(self, request, queryset):
         pedidos_notificados = 0
-    
+
         for pedido in queryset:
             if pedido.status == 'pronto' and hasattr(pedido.cliente, 'telefone'):
                 link_pedido = f"https://lavandaria-production.up.railway.app/meu-pedido/{pedido.id}"
@@ -624,18 +683,17 @@ class PedidoAdmin(ModelAdmin, ImportExportModelAdmin):
                     f"o seu artigo #{pedido.id} esta pronto, para o levantamento. "
                     f"Para mais info. Clique aqui {link_pedido}"
                 )
-    
+
                 resposta = enviar_sms_mozesms(pedido.cliente.telefone, mensagem)
-    
+
                 if resposta:
                     pedidos_notificados += 1
-    
+
         if pedidos_notificados:
             messages.success(request, f"Mensagem enviada com sucesso para {pedidos_notificados} clientes.")
         else:
             messages.warning(request,
                              "ERRO. Verifique se os pedidos estão 'prontos' e se os clientes têm número de telefone.")
-
 
     # mantém as tuas actions operacionais
     actions = [
