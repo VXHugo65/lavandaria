@@ -104,7 +104,30 @@ def imprimir_recibo_imagem(request, pedido_id):
         )["total"]
     )
 
-    saldo = (pedido.total or Decimal("0.00")) - (valor_pago or Decimal("0.00"))
+    # ================================
+    # 🔹 CORREÇÃO: Desconto fidelidade aplicado
+    # ================================
+
+    # O desconto já está no campo 'desconto' do pedido
+    # Não precisa buscar em PagamentoPedido com referência específica
+    desconto_aplicado = pedido.desconto or Decimal("0.00")
+
+    # Se quiser identificar se foi desconto de fidelidade (opcional)
+    # Verifica se houve consumo de pontos para este pedido
+    mov_uso_pontos = MovimentacaoPontos.objects.filter(
+        pedido=pedido,
+        tipo="uso"
+    ).first()
+
+    if mov_uso_pontos and desconto_aplicado > 0:
+        # É um desconto de fidelidade (consumiu pontos)
+        desconto_fidelidade = desconto_aplicado
+    else:
+        desconto_fidelidade = Decimal("0.00")
+
+    # Cálculo do saldo considerando o desconto
+    # total_final já é total - desconto (propriedade do modelo Pedido)
+    saldo = (pedido.total_final or Decimal("0.00")) - (valor_pago or Decimal("0.00"))
     if saldo < 0:
         saldo = Decimal("0.00")
 
@@ -130,28 +153,16 @@ def imprimir_recibo_imagem(request, pedido_id):
         metodo_pagamento="pontos"
     ).exists()
 
-    # 🎯 Pontos só aparecem se NÃO for pagamento com pontos
-    if pagamento_pontos:
-        pontos_totais = 0
-        equivalente_mzn = Decimal("0.00")
-    else:
-        pontos_totais = pedido.cliente.pontos
-        equivalente_mzn = Decimal(pontos_totais) * Decimal("0.10")
-
-    pontos_ganhos = mov.pontos if mov else 0
-
+    # 🎯 Pontos do cliente
     pontos_totais = pedido.cliente.pontos
     equivalente_mzn = Decimal(pontos_totais) * Decimal("0.10")
 
-
-
+    pontos_ganhos = mov.pontos if mov else 0
 
     recibo_texto = render_to_string("core/recibo_termico.txt", {
         "pedido": pedido,
         "pedidos_nao_pagos": pedidos_nao_pagos,
         "total_em_divida": total_em_divida,
-
-
         "valor_pago": valor_pago,
         "saldo": saldo,
         "ultimo_metodo_pagamento": ultimo_metodo_pagamento,
@@ -161,8 +172,16 @@ def imprimir_recibo_imagem(request, pedido_id):
         "pontos_ganhos": pontos_ganhos,
         "pontos_totais": pontos_totais,
         "equivalente_mzn": equivalente_mzn,
+
+        # 🎁 desconto
+        "desconto_aplicado": desconto_aplicado,
+        "desconto_fidelidade": desconto_fidelidade,
+
+        # 🎁 total com desconto (já incluso no pedido.total_final)
+        "total_final": pedido.total_final,
     })
 
+    # Restante do código permanece IGUAL...
     # Ajuste do tamanho da fonte e cálculo da altura
     try:
         font = ImageFont.load_default(size=18)
