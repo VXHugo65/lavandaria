@@ -94,220 +94,64 @@ from django.db.models.functions import Coalesce
 
 DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2))
 
+
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO - Período selecionado pelo usuário
-    O usuário escolhe a data inicial e final para filtrar os pagamentos
+    Gera um relatório financeiro em PDF dos pedidos selecionados no Django Admin.
     """
-    
-    from django.utils import timezone
-    from datetime import datetime, timedelta
-    from django.contrib import messages
-    from django.db.models import Sum, Count
-    from django.db.models.functions import Coalesce
-    from decimal import Decimal
-    from io import BytesIO
-    from xhtml2pdf import pisa
-    from django.template.loader import render_to_string
-    from django.http import HttpResponse
-    
-    DECIMAL_0 = Decimal("0.00")
-    
-    # ===== FUNÇÃO PARA CONVERTER DATA =====
-    def converter_data(data_str):
-        """Tenta converter string para data em múltiplos formatos"""
-        if not data_str or data_str == '':
-            return None
-            
-        formatos = [
-            "%d/%m/%Y",     # 03/03/2026
-            "%Y-%m-%d",     # 2026-03-03
-            "%d-%m-%Y",     # 03-03-2026
-            "%Y/%m/%d",     # 2026/03/03
-        ]
-        
-        for formato in formatos:
-            try:
-                return datetime.strptime(data_str, formato).date()
-            except ValueError:
-                continue
-        return None
-    
-    # ===== OBTER PERÍODO SELECIONADO PELO USUÁRIO =====
-    # Tenta obter dos parâmetros GET ou POST
-    data_inicio_str = request.GET.get('data_inicio') or request.POST.get('data_inicio')
-    data_fim_str = request.GET.get('data_fim') or request.POST.get('data_fim')
-    
-    # Valores padrão (últimos 30 dias se não informado)
-    hoje = timezone.localtime(timezone.now()).date()
-    
-    if data_inicio_str:
-        data_inicio = converter_data(data_inicio_str)
-        if not data_inicio:
-            data_inicio = hoje - timedelta(days=30)
-            messages.warning(request, f"Data inicial inválida. Usando: {data_inicio.strftime('%d/%m/%Y')}")
+
+    # Separar pagos e não pagos
+    queryset_pagos = queryset.filter(pago=True).order_by('metodo_pagamento')
+    queryset_nao_pagos = queryset.filter(pago=False)
+
+    # Calcular totais por pedido (pagos)
+    for pedido in queryset_pagos:
+        pedido.total_quantidade = sum(item.quantidade for item in pedido.itens.all())
+        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
+
+    # Calcular totais por pedido (não pagos)
+    for pedido in queryset_nao_pagos:
+        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
+
+    # Totais gerais
+    total_quantidade = sum(pedido.total_quantidade for pedido in queryset_pagos)
+    total_valor = sum(pedido.total_valor for pedido in queryset_pagos)
+
+    # Datas do relatório
+    if queryset.exists():
+        start_date = queryset.order_by('data_pagamento').first().data_pagamento.strftime('%d/%m/%Y')
+        end_date = queryset.order_by('data_pagamento').last().data_pagamento.strftime('%d/%m/%Y')
     else:
-        data_inicio = hoje - timedelta(days=30)  # Padrão: 30 dias atrás
-        data_inicio_str = data_inicio.strftime("%d/%m/%Y")
-    
-    if data_fim_str:
-        data_fim = converter_data(data_fim_str)
-        if not data_fim:
-            data_fim = hoje
-            messages.warning(request, f"Data final inválida. Usando: {data_fim.strftime('%d/%m/%Y')}")
-    else:
-        data_fim = hoje  # Padrão: hoje
-        data_fim_str = data_fim.strftime("%d/%m/%Y")
-    
-    # Garantir que data_inicio <= data_fim
-    if data_inicio > data_fim:
-        data_inicio, data_fim = data_fim, data_inicio
-        messages.info(request, "Datas invertidas. Corrigido automaticamente.")
-    
-    data_inicio_str = data_inicio.strftime("%d/%m/%Y")
-    data_fim_str = data_fim.strftime("%d/%m/%Y")
-    
-    # ===== TRATAMENTO DO FUNCIONARIO =====
-    try:
-        if hasattr(request.user, 'funcionario') and request.user.funcionario:
-            lavandaria = request.user.funcionario.lavandaria
-        else:
-            lavandaria = None
-    except:
-        lavandaria = None
-    
-    # ===== PEDIDOS SELECIONADOS =====
-    qs_pedidos = queryset.select_related("cliente", "lavandaria", "funcionario")
-    
-    # ===== FILTRO PRINCIPAL: PAGAMENTOS NO PERÍODO SELECIONADO =====
-    pagamentos = (
-        PagamentoPedido.objects
-        .filter(
-            pedido__in=qs_pedidos,
-            pago_em__date__gte=data_inicio,  # Maior ou igual a data_inicio
-            pago_em__date__lte=data_fim       # Menor ou igual a data_fim
-        )
-        .select_related("pedido", "pedido__cliente", "pedido__lavandaria", 
-                       "criado_por", "criado_por__user")
-        .order_by("pago_em")
-    )
-    
-    # ===== MENSAGENS =====
-    if not pagamentos.exists():
-        messages.warning(request, 
-            f"Nenhum pagamento encontrado no período de {data_inicio_str} a {data_fim_str}")
-    else:
-        total_periodo = pagamentos.aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
-        messages.success(request, 
-            f"Encontrados {pagamentos.count()} pagamentos no período. "
-            f"Total: {total_periodo:,.2f} Mts".replace(',', 'X').replace('.', ',').replace('X', '.'))
-    
-    # ===== TOTAIS =====
-    total_faturado = qs_pedidos.aggregate(
-        t=Coalesce(Sum("total"), DECIMAL_0)
-    )["t"]
-    
-    total_recebido_periodo = pagamentos.aggregate(
-        t=Coalesce(Sum("valor"), DECIMAL_0)
-    )["t"]
-    
-    # ===== SALDO TOTAL (considerando TODOS os pagamentos, não só do período) =====
-    saldo_total = Decimal("0.00")
-    pedidos_em_aberto = []
-    
-    for p in qs_pedidos:
-        # Para saldo, usamos TODOS os pagamentos do pedido (histórico completo)
-        recebido_total = (
-            PagamentoPedido.objects
-            .filter(pedido=p)
-            .aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
-        )
-        saldo = (p.total or DECIMAL_0) - (recebido_total or DECIMAL_0)
-        if saldo > 0:
-            pedidos_em_aberto.append({
-                "pedido": p,
-                "recebido": recebido_total,
-                "saldo": saldo,
-            })
-            saldo_total += saldo
-    
-    # ===== RESUMOS (APENAS DO PERÍODO SELECIONADO) =====
-    
-    # Por método de pagamento
-    resumo_por_metodo = (
-        pagamentos.values("metodo_pagamento")
-        .annotate(
-            qtd=Count("id"),
-            total=Coalesce(Sum("valor"), DECIMAL_0),
-        )
-        .order_by("-total")
-    )
-    
-    # Por dia (dentro do período)
-    resumo_por_dia = (
-        pagamentos
-        .values("pago_em__date")
-        .annotate(
-            qtd=Count("id"),
-            total=Coalesce(Sum("valor"), DECIMAL_0),
-        )
-        .order_by("pago_em__date")
-    )
-    
-    # Por caixa (funcionário)
-    resumo_por_caixa = (
-        pagamentos
-        .values("criado_por__user__username")
-        .annotate(
-            qtd=Count("id"),
-            total=Coalesce(Sum("valor"), DECIMAL_0),
-        )
-        .order_by("-total")
-    )
-    
-    # Por lavandaria
-    resumo_por_lavandaria = (
-        pagamentos
-        .values("pedido__lavandaria__nome")
-        .annotate(
-            qtd=Count("id"),
-            total=Coalesce(Sum("valor"), DECIMAL_0),
-        )
-        .order_by("-total")
-    )
-    
-    # ===== CONTEXTO PARA O TEMPLATE =====
-    context = {
-        "lavandaria": lavandaria,
-        "data_inicio": data_inicio_str,
-        "data_fim": data_fim_str,
-        "total_faturado": total_faturado,
-        "total_recebido_periodo": total_recebido_periodo,
-        "saldo_total": saldo_total,
-        "resumo_por_metodo": resumo_por_metodo,
-        "resumo_por_dia": resumo_por_dia,
-        "resumo_por_caixa": resumo_por_caixa,
-        "resumo_por_lavandaria": resumo_por_lavandaria,
-        "pagamentos": pagamentos,
-        "pedidos_em_aberto": pedidos_em_aberto,
-        "pedidos": qs_pedidos,
-        "qtd_pagamentos": pagamentos.count(),
-    }
-    
-    # ===== GERAR PDF =====
-    html_string = render_to_string("core/relatorio_financeiro.html", context)
+        start_date = end_date = datetime.today().strftime('%d/%m/%Y')
+
+    lavandaria = request.user.funcionario.lavandaria
+
+    # Renderizar o HTML para PDF
+    html_string = render_to_string('core/relatorio_financeiro.html', {
+        'lavandaria': lavandaria,
+        'pedidos_pagos': queryset_pagos,
+        'nao_pagos': [],
+        'total_quantidade': total_quantidade,
+        'total_valor': total_valor,
+        'start_date': start_date,
+        'end_date': end_date,
+    })
+
+    # Gerar o PDF
     buffer = BytesIO()
-    filename = f"relatorio_financeiro_{data_inicio_str.replace('/', '_')}_a_{data_fim_str.replace('/', '_')}.pdf"
-    
+    filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
-    
+
     if pisa_status.err:
         return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
-    
+
     buffer.seek(0)
     response = HttpResponse(buffer, content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
     return response
+
+       
 
 
 @admin.register(User)
@@ -923,6 +767,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
