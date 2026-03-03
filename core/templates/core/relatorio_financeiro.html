@@ -12,7 +12,7 @@
         .header p { font-size: 12px; color: #555; margin-top: 0; line-height: 1.35; }
         .header hr { border: 0; height: 1px; background-color: #ddd; margin: 12px 0; }
         
-        .aviso-hoje {
+        .aviso-data {
             background-color: #e3f2fd;
             border-left: 4px solid #2196f3;
             padding: 10px;
@@ -38,7 +38,7 @@
             border-radius: 4px;
         }
 
-        .section-title-hoje {
+        .section-title-data {
             border-left-color: #28a745;
             background-color: #f0fff4;
         }
@@ -70,7 +70,7 @@
             background: #eef2ff;
             color: #3730a3;
         }
-        .badge-hoje {
+        .badge-data {
             background: #c8e6c9;
             color: #1b5e20;
         }
@@ -91,7 +91,9 @@
 <div class="header">
     <h6>POWER WASHING, LDA</h6>
     <p>
-        <strong>📋 RELATÓRIO DE CAIXA DIÁRIO</strong>
+        <strong>📋 RELATÓRIO DE CAIXA</strong>
+        <br>
+        Período: <strong>{{ start_date }}</strong> até <strong>{{ end_date }}</strong>
         <br>
         Data do movimento: <strong>{{ data_relatorio }}</strong>
         <br>
@@ -104,19 +106,21 @@
     <hr>
 </div>
 
-<!-- Aviso de período -->
-<div class="aviso-hoje">
-    <strong>⏰ Período analisado:</strong> Apenas pagamentos registrados em <strong>{{ data_relatorio }}</strong><br>
+<!-- Aviso da data selecionada -->
+<div class="aviso-data">
+    <strong>📅 Período analisado:</strong> 
+    Pagamentos registrados entre <strong>{{ start_date }}</strong> e <strong>{{ end_date }}</strong><br>
+    <strong>💰 Data em foco:</strong> <strong>{{ data_relatorio }}</strong> (pagamentos deste dia específico)<br>
     <span class="muted">* Pagamentos parciais são mostrados individualmente por data de recebimento</span>
 </div>
 
-<!-- KPIs - Destaque para o dia -->
+<!-- KPIs - Destaque para a data selecionada -->
 <table class="kpis">
     <tr>
         <td class="kpi-destaque">
-            <div class="kpi-title">💰 Total recebido HOJE</div>
-            <div class="kpi-value">{{ total_recebido_hoje|currency_mzn }}</div>
-            <div class="resumo-parcial">{{ pagamentos_hoje|length }} pagamento(s) no dia</div>
+            <div class="kpi-title">💰 Total recebido em {{ data_relatorio }}</div>
+            <div class="kpi-value">{{ total_recebido_data|currency_mzn }}</div>
+            <div class="resumo-parcial">{{ pagamentos_data|length }} pagamento(s) nesta data</div>
         </td>
         <td>
             <div class="kpi-title">📊 Total faturado (histórico)</div>
@@ -129,16 +133,16 @@
     </tr>
 </table>
 
-<!-- Resumo por método (APENAS HOJE) -->
-<div class="section-title section-title-hoje">
+<!-- Resumo por método (APENAS DA DATA SELECIONADA) -->
+<div class="section-title section-title-data">
     💳 Resumo por Método de Pagamento - {{ data_relatorio }}
 </div>
 <table class="table">
     <thead>
         <tr>
             <th>Método</th>
-            <th class="text-center">Qtd (hoje)</th>
-            <th class="text-right">Total Recebido Hoje</th>
+            <th class="text-center">Qtd ({{ data_relatorio }})</th>
+            <th class="text-right">Total Recebido</th>
         </tr>
     </thead>
     <tbody>
@@ -150,28 +154,28 @@
         </tr>
     {% empty %}
         <tr>
-            <td colspan="3" class="muted">Nenhum pagamento registrado hoje.</td>
+            <td colspan="3" class="muted">Nenhum pagamento registrado nesta data.</td>
         </tr>
     {% endfor %}
     </tbody>
     <tfoot>
         <tr>
             <td colspan="2">Total do Dia</td>
-            <td class="text-right">{{ total_recebido_hoje|currency_mzn }}</td>
+            <td class="text-right">{{ total_recebido_data|currency_mzn }}</td>
         </tr>
     </tfoot>
 </table>
 
-<!-- Resumo por caixa (APENAS HOJE) -->
-<div class="section-title section-title-hoje">
+<!-- Resumo por caixa (APENAS DA DATA SELECIONADA) -->
+<div class="section-title section-title-data">
     👤 Resumo por Caixa (Operador) - {{ data_relatorio }}
 </div>
 <table class="table">
     <thead>
         <tr>
             <th>Caixa</th>
-            <th class="text-center">Qtd (hoje)</th>
-            <th class="text-right">Total Recebido Hoje</th>
+            <th class="text-center">Qtd ({{ data_relatorio }})</th>
+            <th class="text-right">Total Recebido</th>
         </tr>
     </thead>
     <tbody>
@@ -183,22 +187,22 @@
         </tr>
     {% empty %}
         <tr>
-            <td colspan="3" class="muted">Sem movimentos hoje.</td>
+            <td colspan="3" class="muted">Sem movimentos nesta data.</td>
         </tr>
     {% endfor %}
     </tbody>
 </table>
 
-<!-- Resumo por lavandaria (APENAS HOJE) -->
-<div class="section-title section-title-hoje">
+<!-- Resumo por lavandaria (APENAS DA DATA SELECIONADA) -->
+<div class="section-title section-title-data">
     🏢 Resumo por Lavandaria - {{ data_relatorio }}
 </div>
 <table class="table">
     <thead>
         <tr>
             <th>Lavandaria</th>
-            <th class="text-center">Qtd (hoje)</th>
-            <th class="text-right">Total Recebido Hoje</th>
+            <th class="text-center">Qtd ({{ data_relatorio }})</th>
+            <th class="text-right">Total Recebido</th>
         </tr>
     </thead>
     <tbody>
@@ -210,14 +214,14 @@
         </tr>
     {% empty %}
         <tr>
-            <td colspan="3" class="muted">Sem movimentos hoje.</td>
+            <td colspan="3" class="muted">Sem movimentos nesta data.</td>
         </tr>
     {% endfor %}
     </tbody>
 </table>
 
-<!-- Detalhe de pagamentos do DIA -->
-<div class="section-title section-title-hoje">
+<!-- Detalhe de pagamentos da DATA SELECIONADA -->
+<div class="section-title section-title-data">
     📋 Movimentos Detalhados - {{ data_relatorio }}
 </div>
 <table class="table">
@@ -235,7 +239,7 @@
         </tr>
     </thead>
     <tbody>
-    {% for p in pagamentos_hoje %}
+    {% for p in pagamentos_data %}
         <tr>
             <td>{{ p.id }}</td>
             <td>#{{ p.pedido.id }}</td>
@@ -258,14 +262,14 @@
         </tr>
     {% empty %}
         <tr>
-            <td colspan="9" class="muted">Nenhum pagamento registrado hoje.</td>
+            <td colspan="9" class="muted">Nenhum pagamento registrado nesta data.</td>
         </tr>
     {% endfor %}
     </tbody>
     <tfoot>
         <tr>
-            <td colspan="7">TOTAL RECEBIDO HOJE</td>
-            <td class="text-right"><strong>{{ total_recebido_hoje|currency_mzn }}</strong></td>
+            <td colspan="7">TOTAL RECEBIDO EM {{ data_relatorio }}</td>
+            <td class="text-right"><strong>{{ total_recebido_data|currency_mzn }}</strong></td>
             <td></td>
         </tr>
     </tfoot>
@@ -322,11 +326,11 @@
 <!-- Rodapé com resumo -->
 <div style="margin-top: 30px; font-size: 10px; color: #666; border-top: 1px dashed #ccc; padding-top: 10px;">
     <p>
-        <strong>Resumo do dia {{ data_relatorio }}:</strong><br>
-        • Total recebido: {{ total_recebido_hoje|currency_mzn }} ({{ pagamentos_hoje|length }} pagamento{{ pagamentos_hoje|length|pluralize:"s" }})<br>
-        • Pedidos com pagamento hoje: 
-        {% with pedidos_hoje=pagamentos_hoje|dictsortreversed:"pedido.id" %}
-            {% for p in pagamentos_hoje %}#{{ p.pedido.id }}{% if not forloop.last %}, {% endif %}{% endfor %}
+        <strong>Resumo do período {{ start_date }} a {{ end_date }}:</strong><br>
+        • Total recebido em <strong>{{ data_relatorio }}</strong>: {{ total_recebido_data|currency_mzn }} ({{ pagamentos_data|length }} pagamento{{ pagamentos_data|length|pluralize:"s" }})<br>
+        • Pedidos com pagamento nesta data: 
+        {% with pedidos_data=pagamentos_data|dictsortreversed:"pedido.id" %}
+            {% for p in pagamentos_data %}#{{ p.pedido.id }}{% if not forloop.last %}, {% endif %}{% endfor %}
         {% endwith %}
         <br>
         • Saldo total em aberto: {{ saldo_total|currency_mzn }} em {{ pedidos_em_aberto|length }} pedido{{ pedidos_em_aberto|length|pluralize:"s" }}
