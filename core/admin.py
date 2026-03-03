@@ -97,64 +97,68 @@ DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, deci
 
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO (Caixa) — por recebimentos (PagamentoPedido).
-    Funciona com pagamentos parciais.
+    RELATÓRIO FINANCEIRO - Apenas pagamentos do dia atual
     """
-
-    qs_pedidos = (
-        queryset
-        .select_related("cliente", "lavandaria", "funcionario")
-        .order_by("criado_em")
-    )
-
-    # janela “visual” do relatório (baseada nos pedidos selecionados)
-    if qs_pedidos.exists():
-        start_dt = qs_pedidos.first().criado_em
-        end_dt = qs_pedidos.last().criado_em
-    else:
-        now = timezone.now()
-        start_dt = now - timezone.timedelta(days=1)
-        end_dt = now
-
-    # Pagamentos (recebimentos) pertencentes aos pedidos selecionados
+    
+    from django.utils import timezone
+    
+    # Data de hoje
+    hoje = timezone.localtime(timezone.now()).date()
+    hoje_str = hoje.strftime("%d/%m/%Y")
+    
+    # Pedidos selecionados
+    qs_pedidos = queryset.select_related("cliente", "lavandaria", "funcionario")
+    
+    # ⚠️ FILTRO PRINCIPAL: APENAS PAGAMENTOS DE HOJE
     pagamentos = (
         PagamentoPedido.objects
-        .filter(pedido__in=qs_pedidos)
-        .select_related("pedido", "pedido__cliente", "pedido__lavandaria", "criado_por", "criado_por__user")
-        .order_by("pago_em", "id")
+        .filter(
+            pedido__in=qs_pedidos,
+            pago_em__date=hoje  # APENAS HOJE!
+        )
+        .select_related("pedido", "pedido__cliente", "pedido__lavandaria", 
+                       "criado_por", "criado_por__user")
+        .order_by("pago_em")
     )
-
+    
+    # Se não houver pagamentos hoje, avisar
+    if not pagamentos.exists():
+        messages.warning(request, f"Nenhum pagamento registrado hoje ({hoje_str})")
+    
     # ===== TOTAIS =====
     total_faturado = qs_pedidos.aggregate(
         t=Coalesce(Sum("total"), DECIMAL_0)
-    )["t"]
-
-    total_recebido = pagamentos.aggregate(
+    )["t"]  # Total de todos os pedidos (histórico)
+    
+    total_recebido_hoje = pagamentos.aggregate(
         t=Coalesce(Sum("valor"), DECIMAL_0)
-    )["t"]
-
-    # saldo por pedido (sem usar annotate "saldo" pra não bater com property)
+    )["t"]  # ⚠️ APENAS O QUE RECEBEMOS HOJE!
+    
+    # Saldo total (considerando TODOS os pagamentos, não só hoje)
+    # Porque o saldo depende do histórico completo
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
+    
     for p in qs_pedidos:
-        recebido_p = (
+        # Para saldo, usamos TODOS os pagamentos (não só hoje)
+        recebido_total = (
             PagamentoPedido.objects
             .filter(pedido=p)
             .aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
         )
-        saldo = (p.total or Decimal("0.00")) - (recebido_p or Decimal("0.00"))
+        saldo = (p.total or Decimal("0.00")) - (recebido_total or Decimal("0.00"))
         if saldo > 0:
             pedidos_em_aberto.append({
                 "pedido": p,
-                "recebido": recebido_p,
+                "recebido": recebido_total,
                 "saldo": saldo,
             })
             saldo_total += saldo
-
-    # ===== RESUMOS =====
-
-    # por método
-    resumo_por_metodo = (
+    
+    # ===== RESUMOS (APENAS PAGAMENTOS DE HOJE) =====
+    
+    # Por método de pagamento - HOJE
+    resumo_por_metodo_hoje = (
         pagamentos.values("metodo_pagamento")
         .annotate(
             qtd=Count("id"),
@@ -162,20 +166,9 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         )
         .order_by("-total")
     )
-
-    # por dia (caixa) — baseado no dia do pagamento
-    resumo_por_dia = (
-        pagamentos
-        .values("pago_em__date")
-        .annotate(
-            qtd=Count("id"),
-            total=Coalesce(Sum("valor"), DECIMAL_0),
-        )
-        .order_by("pago_em__date")
-    )
-
-    # por lavandaria (se tiver multi)
-    resumo_por_lavandaria = (
+    
+    # Por lavandaria - HOJE
+    resumo_por_lavandaria_hoje = (
         pagamentos
         .values("pedido__lavandaria__nome")
         .annotate(
@@ -184,9 +177,9 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         )
         .order_by("-total")
     )
-
-    # por caixa (funcionário)
-    resumo_por_caixa = (
+    
+    # Por caixa (funcionário) - HOJE
+    resumo_por_caixa_hoje = (
         pagamentos
         .values("criado_por__user__username")
         .annotate(
@@ -195,43 +188,37 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         )
         .order_by("-total")
     )
-
-    # Lavandaria “do usuário” (se existir)
+    
+    # Lavandaria do usuário
     try:
         lavandaria = request.user.funcionario.lavandaria
     except Exception:
         lavandaria = None
-
-    start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
-    end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
-
+    
+    # Renderizar template
     html_string = render_to_string("core/relatorio_financeiro.html", {
         "lavandaria": lavandaria,
-
-        "start_date": start_date,
-        "end_date": end_date,
-
+        "data_relatorio": hoje_str,  # Data específica do relatório
         "total_faturado": total_faturado,
-        "total_recebido": total_recebido,
+        "total_recebido_hoje": total_recebido_hoje,
         "saldo_total": saldo_total,
-
-        "resumo_por_metodo": resumo_por_metodo,
-        "resumo_por_dia": resumo_por_dia,
-        "resumo_por_lavandaria": resumo_por_lavandaria,
-        "resumo_por_caixa": resumo_por_caixa,
-
-        "pagamentos": pagamentos,
-        "pedidos_em_aberto": pedidos_em_aberto,  # lista de dicts: pedido/recebido/saldo
+        "resumo_por_metodo": resumo_por_metodo_hoje,
+        "resumo_por_lavandaria": resumo_por_lavandaria_hoje,
+        "resumo_por_caixa": resumo_por_caixa_hoje,
+        "pagamentos_hoje": pagamentos,  # Só os de hoje
+        "pedidos_em_aberto": pedidos_em_aberto,  # Todos com saldo
         "pedidos": qs_pedidos,
+        "e_apenas_hoje": True,  # Flag para o template saber
     })
-
+    
+    # Gerar PDF
     buffer = BytesIO()
-    filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
+    filename = f"relatorio_caixa_{hoje_str.replace('/', '_')}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
-
+    
     if pisa_status.err:
         return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
-
+    
     buffer.seek(0)
     response = HttpResponse(buffer, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
@@ -851,6 +838,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
