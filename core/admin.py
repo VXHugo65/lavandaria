@@ -94,59 +94,91 @@ from django.db.models.functions import Coalesce
 
 DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2))
 
-
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO - Corrigido para mostrar apenas pagamentos do dia
+    RELATÓRIO FINANCEIRO - Corrigido para tratar ausência de funcionario
     """
     
     from django.utils import timezone
     from datetime import datetime
+    from django.contrib import messages
+    from django.db.models import Sum, Count
+    from django.db.models.functions import Coalesce
+    from decimal import Decimal
+    from io import BytesIO
+    from xhtml2pdf import pisa
+    from django.template.loader import render_to_string
+    from django.http import HttpResponse
     
-    # ===== 1. OBTER A DATA SELECIONADA =====
-    data_selecionada = request.GET.get('data') or request.POST.get('data')
+    DECIMAL_0 = Decimal("0.00")
+    
+    # ===== TRATAMENTO CORRETO DO FUNCIONARIO =====
+    try:
+        # Tenta acessar o funcionario
+        if hasattr(request.user, 'funcionario') and request.user.funcionario:
+            lavandaria = request.user.funcionario.lavandaria
+        else:
+            lavandaria = None
+            # Opcional: registrar aviso
+            messages.warning(request, "Usuário não está associado a uma lavandaria")
+    except:
+        # Captura qualquer erro (incluindo RelatedObjectDoesNotExist)
+        lavandaria = None
+    
+    # ===== OBTER DATA SELECIONADA =====
+    data_selecionada = request.GET.get('data_relatorio') or request.POST.get('data_relatorio')
     
     if data_selecionada:
         try:
             data_foco = datetime.strptime(data_selecionada, "%d/%m/%Y").date()
-        except:
+            data_foco_str = data_selecionada
+        except (ValueError, TypeError):
             data_foco = timezone.localtime(timezone.now()).date()
+            data_foco_str = data_foco.strftime("%d/%m/%Y")
+            messages.warning(request, f"Formato de data inválido. Usando: {data_foco_str}")
     else:
         data_foco = timezone.localtime(timezone.now()).date()
+        data_foco_str = data_foco.strftime("%d/%m/%Y")
     
-    data_foco_str = data_foco.strftime("%d/%m/%Y")
-    
-    # ===== 2. PEDIDOS SELECIONADOS =====
+    # Pedidos selecionados
     qs_pedidos = queryset.select_related("cliente", "lavandaria", "funcionario")
     
-    # ===== 3. ⚠️ FILTRO CORRETO: PAGAMENTOS APENAS DA DATA SELECIONADA =====
+    # Filtro principal: pagamentos da data selecionada
     pagamentos = (
         PagamentoPedido.objects
         .filter(
             pedido__in=qs_pedidos,
-            pago_em__date=data_foco  # ← FILTRO CRÍTICO QUE FALTAVA!
+            pago_em__date=data_foco
         )
         .select_related("pedido", "pedido__cliente", "pedido__lavandaria", 
                        "criado_por", "criado_por__user")
         .order_by("pago_em")
     )
     
-    # ===== 4. TOTAIS =====
-    total_faturado = qs_pedidos.aggregate(t=Coalesce(Sum("total"), DECIMAL_0))["t"]
+    # Aviso se não houver pagamentos
+    if not pagamentos.exists():
+        messages.warning(request, f"Nenhum pagamento registrado em {data_foco_str}")
     
-    # ⚠️ IMPORTANTE: total_recebido é SÓ DA DATA SELECIONADA!
-    total_recebido = pagamentos.aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
+    # Totais
+    total_faturado = qs_pedidos.aggregate(
+        t=Coalesce(Sum("total"), DECIMAL_0)
+    )["t"]
     
-    # ===== 5. SALDO (usa TODOS os pagamentos, não só da data) =====
+    total_recebido = pagamentos.aggregate(
+        t=Coalesce(Sum("valor"), DECIMAL_0)
+    )["t"]
+    
+    # Saldo total
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
     
     for p in qs_pedidos:
-        # Para saldo, usamos TODOS os pagamentos (histórico completo)
-        recebido_total = PagamentoPedido.objects.filter(pedido=p).aggregate(
-            t=Coalesce(Sum("valor"), DECIMAL_0)
-        )["t"]
-        saldo = (p.total or 0) - (recebido_total or 0)
+        recebido_total = (
+            PagamentoPedido.objects
+            .filter(pedido=p)
+            .aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
+        )
+        saldo = (p.total or DECIMAL_0) - (recebido_total or DECIMAL_0)
         if saldo > 0:
             pedidos_em_aberto.append({
                 "pedido": p,
@@ -155,51 +187,68 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
             })
             saldo_total += saldo
     
-    # ===== 6. RESUMOS (APENAS DA DATA SELECIONADA) =====
-    resumo_por_metodo = pagamentos.values("metodo_pagamento").annotate(
-        qtd=Count("id"),
-        total=Coalesce(Sum("valor"), DECIMAL_0),
-    ).order_by("-total")
+    # Resumos
+    resumo_por_metodo = (
+        pagamentos.values("metodo_pagamento")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
     
-    resumo_por_dia = pagamentos.values("pago_em__date").annotate(
-        qtd=Count("id"),
-        total=Coalesce(Sum("valor"), DECIMAL_0),
-    ).order_by("pago_em__date")
+    resumo_por_caixa = (
+        pagamentos
+        .values("criado_por__user__username")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
     
-    resumo_por_caixa = pagamentos.values("criado_por__user__username").annotate(
-        qtd=Count("id"),
-        total=Coalesce(Sum("valor"), DECIMAL_0),
-    ).order_by("-total")
+    resumo_por_lavandaria = (
+        pagamentos
+        .values("pedido__lavandaria__nome")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
     
-    resumo_por_lavandaria = pagamentos.values("pedido__lavandaria__nome").annotate(
-        qtd=Count("id"),
-        total=Coalesce(Sum("valor"), DECIMAL_0),
-    ).order_by("-total")
+    # Período para o cabeçalho
+    if qs_pedidos.exists():
+        start_dt = qs_pedidos.first().criado_em
+        end_dt = qs_pedidos.last().criado_em
+        start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
+        end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
+    else:
+        start_date = data_foco_str
+        end_date = data_foco_str
     
-    # ===== 7. CONTEXTO PARA O TEMPLATE =====
-    context = {
-        "lavandaria": getattr(request.user.funcionario, 'lavandaria', None),
-        "start_date": data_foco_str,  # Data selecionada
-        "end_date": data_foco_str,    # Mesma data
+    # Renderizar template
+    html_string = render_to_string("core/relatorio_financeiro.html", {
+        "lavandaria": lavandaria,
+        "start_date": start_date,
+        "end_date": end_date,
         "data_relatorio": data_foco_str,
         "total_faturado": total_faturado,
-        "total_recebido": total_recebido,  # ← SÓ DA DATA!
+        "total_recebido": total_recebido,
         "saldo_total": saldo_total,
         "resumo_por_metodo": resumo_por_metodo,
-        "resumo_por_dia": resumo_por_dia,
-        "resumo_por_lavandaria": resumo_por_lavandaria,
         "resumo_por_caixa": resumo_por_caixa,
-        "pagamentos": pagamentos,  # ← SÓ DA DATA!
+        "resumo_por_lavandaria": resumo_por_lavandaria,
+        "pagamentos": pagamentos,
         "pedidos_em_aberto": pedidos_em_aberto,
         "pedidos": qs_pedidos,
-    }
+    })
     
-    # ===== 8. GERAR PDF =====
-    html_string = render_to_string("core/relatorio_financeiro.html", context)
+    # Gerar PDF
     buffer = BytesIO()
     filename = f"relatorio_caixa_{data_foco_str.replace('/', '_')}.pdf"
-    
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
+    
     if pisa_status.err:
         return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
     
@@ -207,6 +256,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     response = HttpResponse(buffer, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin, ImportExportModelAdmin):
@@ -821,6 +871,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
