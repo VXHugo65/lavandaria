@@ -97,50 +97,82 @@ DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, deci
 
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO - Apenas pagamentos do dia atual
+    RELATÓRIO FINANCEIRO - Pagamentos de uma data específica selecionada pelo funcionário
     """
     
     from django.utils import timezone
+    from datetime import datetime
+    from django.contrib import messages
     
-    # Data de hoje
-    hoje = timezone.localtime(timezone.now()).date()
-    hoje_str = hoje.strftime("%d/%m/%Y")
+    # ===== OBTER DATA SELECIONADA =====
+    # Tenta obter a data dos parâmetros da request (GET ou POST)
+    data_selecionada = request.GET.get('data_relatorio') or request.POST.get('data_relatorio')
+    
+    if data_selecionada:
+        try:
+            # Converte string para data (formato DD/MM/YYYY)
+            data_foco = datetime.strptime(data_selecionada, "%d/%m/%Y").date()
+            data_foco_str = data_selecionada
+        except (ValueError, TypeError):
+            # Se formato inválido, usa data atual
+            data_foco = timezone.localtime(timezone.now()).date()
+            data_foco_str = data_foco.strftime("%d/%m/%Y")
+            messages.warning(request, f"Formato de data inválido. Usando data atual: {data_foco_str}")
+    else:
+        # Se não foi fornecida data, usa a data do primeiro pedido selecionado ou data atual
+        if queryset.exists():
+            primeiro_pedido = queryset.first()
+            data_foco = timezone.localtime(primeiro_pedido.criado_em).date()
+        else:
+            data_foco = timezone.localtime(timezone.now()).date()
+        data_foco_str = data_foco.strftime("%d/%m/%Y")
+        messages.info(request, f"Nenhuma data selecionada. Usando data do primeiro pedido: {data_foco_str}")
+    
+    # Período do relatório (baseado nos pedidos selecionados)
+    if queryset.exists():
+        start_dt = queryset.first().criado_em
+        end_dt = queryset.last().criado_em
+        start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
+        end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
+    else:
+        now = timezone.now()
+        start_date = timezone.localtime(now).strftime("%d/%m/%Y")
+        end_date = start_date
     
     # Pedidos selecionados
     qs_pedidos = queryset.select_related("cliente", "lavandaria", "funcionario")
     
-    # ⚠️ FILTRO PRINCIPAL: APENAS PAGAMENTOS DE HOJE
-    pagamentos = (
+    # ===== FILTRO PRINCIPAL: APENAS PAGAMENTOS DA DATA SELECIONADA =====
+    pagamentos_data = (
         PagamentoPedido.objects
         .filter(
             pedido__in=qs_pedidos,
-            pago_em__date=hoje  # APENAS HOJE!
+            pago_em__date=data_foco  # Data selecionada pelo funcionário!
         )
         .select_related("pedido", "pedido__cliente", "pedido__lavandaria", 
                        "criado_por", "criado_por__user")
         .order_by("pago_em")
     )
     
-    # Se não houver pagamentos hoje, avisar
-    if not pagamentos.exists():
-        messages.warning(request, f"Nenhum pagamento registrado hoje ({hoje_str})")
+    # Aviso se não houver pagamentos na data selecionada
+    if not pagamentos_data.exists():
+        messages.warning(request, f"Nenhum pagamento registrado em {data_foco_str}")
     
     # ===== TOTAIS =====
     total_faturado = qs_pedidos.aggregate(
         t=Coalesce(Sum("total"), DECIMAL_0)
-    )["t"]  # Total de todos os pedidos (histórico)
+    )["t"]  # Total de todos os pedidos selecionados (histórico)
     
-    total_recebido_hoje = pagamentos.aggregate(
+    total_recebido_data = pagamentos_data.aggregate(
         t=Coalesce(Sum("valor"), DECIMAL_0)
-    )["t"]  # ⚠️ APENAS O QUE RECEBEMOS HOJE!
+    )["t"]  # APENAS O QUE RECEBEMOS NA DATA SELECIONADA!
     
-    # Saldo total (considerando TODOS os pagamentos, não só hoje)
-    # Porque o saldo depende do histórico completo
+    # Saldo total (considerando TODOS os pagamentos, não só da data)
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
     
     for p in qs_pedidos:
-        # Para saldo, usamos TODOS os pagamentos (não só hoje)
+        # Para saldo, usamos TODOS os pagamentos do pedido (histórico completo)
         recebido_total = (
             PagamentoPedido.objects
             .filter(pedido=p)
@@ -155,11 +187,11 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
             })
             saldo_total += saldo
     
-    # ===== RESUMOS (APENAS PAGAMENTOS DE HOJE) =====
+    # ===== RESUMOS (APENAS PAGAMENTOS DA DATA SELECIONADA) =====
     
-    # Por método de pagamento - HOJE
-    resumo_por_metodo_hoje = (
-        pagamentos.values("metodo_pagamento")
+    # Por método de pagamento
+    resumo_por_metodo = (
+        pagamentos_data.values("metodo_pagamento")
         .annotate(
             qtd=Count("id"),
             total=Coalesce(Sum("valor"), DECIMAL_0),
@@ -167,9 +199,9 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("-total")
     )
     
-    # Por lavandaria - HOJE
-    resumo_por_lavandaria_hoje = (
-        pagamentos
+    # Por lavandaria
+    resumo_por_lavandaria = (
+        pagamentos_data
         .values("pedido__lavandaria__nome")
         .annotate(
             qtd=Count("id"),
@@ -178,15 +210,27 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("-total")
     )
     
-    # Por caixa (funcionário) - HOJE
-    resumo_por_caixa_hoje = (
-        pagamentos
+    # Por caixa (funcionário)
+    resumo_por_caixa = (
+        pagamentos_data
         .values("criado_por__user__username")
         .annotate(
             qtd=Count("id"),
             total=Coalesce(Sum("valor"), DECIMAL_0),
         )
         .order_by("-total")
+    )
+    
+    # Por dia (para o período completo)
+    resumo_por_dia = (
+        PagamentoPedido.objects
+        .filter(pedido__in=qs_pedidos)
+        .values("pago_em__date")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("pago_em__date")
     )
     
     # Lavandaria do usuário
@@ -198,22 +242,24 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     # Renderizar template
     html_string = render_to_string("core/relatorio_financeiro.html", {
         "lavandaria": lavandaria,
-        "data_relatorio": hoje_str,  # Data específica do relatório
+        "start_date": start_date,
+        "end_date": end_date,
+        "data_relatorio": data_foco_str,  # Data específica em foco
         "total_faturado": total_faturado,
-        "total_recebido_hoje": total_recebido_hoje,
+        "total_recebido_data": total_recebido_data,  # Renomeado para clareza
         "saldo_total": saldo_total,
-        "resumo_por_metodo": resumo_por_metodo_hoje,
-        "resumo_por_lavandaria": resumo_por_lavandaria_hoje,
-        "resumo_por_caixa": resumo_por_caixa_hoje,
-        "pagamentos_hoje": pagamentos,  # Só os de hoje
-        "pedidos_em_aberto": pedidos_em_aberto,  # Todos com saldo
+        "resumo_por_metodo": resumo_por_metodo,
+        "resumo_por_dia": resumo_por_dia,  # Mantido para contexto
+        "resumo_por_lavandaria": resumo_por_lavandaria,
+        "resumo_por_caixa": resumo_por_caixa,
+        "pagamentos_data": pagamentos_data,  # Renomeado para clareza
+        "pedidos_em_aberto": pedidos_em_aberto,
         "pedidos": qs_pedidos,
-        "e_apenas_hoje": True,  # Flag para o template saber
     })
     
     # Gerar PDF
     buffer = BytesIO()
-    filename = f"relatorio_caixa_{hoje_str.replace('/', '_')}.pdf"
+    filename = f"relatorio_caixa_{data_foco_str.replace('/', '_')}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
     
     if pisa_status.err:
@@ -838,6 +884,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
