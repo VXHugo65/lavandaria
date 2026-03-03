@@ -95,77 +95,147 @@ from django.db.models.functions import Coalesce
 DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, decimal_places=2))
 
 
-
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO (Caixa) — filtra PAGAMENTOS por período de pagamento.
+    RELATÓRIO FINANCEIRO (Caixa) — por recebimentos (PagamentoPedido).
+    Funciona com pagamentos parciais.
     """
-    
-    # ✅ CORREÇÃO: Usar request.GET para parâmetros da URL (funciona em POST também se houver query string)
-    # Se não houver query string, request.GET estará vazio mas existirá
-    
-    # Pega IDs dos pedidos selecionados no admin
-    pedidos_ids = list(queryset.values_list('id', flat=True))
-    
-    # Base dos pagamentos destes pedidos
-    pagamentos_qs = PagamentoPedido.objects.filter(pedido_id__in=pedidos_ids)
-    
-    # ✅ CORREÇÃO: Verificar se request.GET existe e tem os parâmetros
-    # Em actions do admin, os filtros vêm na URL (GET parameters)
-    try:
-        date_from = request.GET.get('criado_em_from_0')  # Data
-        time_from = request.GET.get('criado_em_from_1', '00:00:00')  # Hora
-        date_to = request.GET.get('criado_em_to_0')  # Data
-        time_to = request.GET.get('criado_em_to_1', '23:59:59')  # Hora
-        
-        # Também verificar formato alternativo que o RangeDateTimeFilter pode usar
-        if not date_from:
-            date_from = request.GET.get('criado_em__from')
-        if not date_to:
-            date_to = request.GET.get('criado_em__to')
-            
-    except AttributeError:
-        # Se por algum motivo não houver GET, tenta POST ou usa defaults
-        date_from = None
-        date_to = None
-    
-    # ✅ Aplica filtros de data nos PAGAMENTOS (pago_em), não nos pedidos
-    if date_from:
-        try:
-            from datetime import datetime
-            from_dt_str = f"{date_from} {time_from}"
-            from_dt = datetime.strptime(from_dt_str, '%Y-%m-%d %H:%M:%S')
-            pagamentos_qs = pagamentos_qs.filter(pago_em__gte=from_dt)
-        except ValueError:
-            # Tenta só a data
-            try:
-                from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
-                pagamentos_qs = pagamentos_qs.filter(pago_em__date__gte=from_date)
-            except ValueError:
-                pass
-            
-    if date_to:
-        try:
-            to_dt_str = f"{date_to} {time_to}"
-            to_dt = datetime.strptime(to_dt_str, '%Y-%m-%d %H:%M:%S')
-            pagamentos_qs = pagamentos_qs.filter(pago_em__lte=to_dt)
-        except ValueError:
-            # Tenta só a data
-            try:
-                to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
-                pagamentos_qs = pagamentos_qs.filter(pago_em__date__lte=to_date)
-            except ValueError:
-                pass
 
-    # Resto do código continua igual...
+    qs_pedidos = (
+        queryset
+        .select_related("cliente", "lavandaria", "funcionario")
+        .order_by("criado_em")
+    )
+
+    # janela “visual” do relatório (baseada nos pedidos selecionados)
+    if qs_pedidos.exists():
+        start_dt = qs_pedidos.first().criado_em
+        end_dt = qs_pedidos.last().criado_em
+    else:
+        now = timezone.now()
+        start_dt = now - timezone.timedelta(days=1)
+        end_dt = now
+
+    # Pagamentos (recebimentos) pertencentes aos pedidos selecionados
     pagamentos = (
-        pagamentos_qs
-        .select_related("pedido", "criado_por", "pedido__cliente", "pedido__lavandaria")
+        PagamentoPedido.objects
+        .filter(pedido__in=qs_pedidos)
+        .select_related("pedido", "pedido__cliente", "pedido__lavandaria", "criado_por", "criado_por__user")
         .order_by("pago_em", "id")
     )
-    
-    # ... (resto da função mantém-se igual)
-       
+
+    # ===== TOTAIS =====
+    total_faturado = qs_pedidos.aggregate(
+        t=Coalesce(Sum("total"), DECIMAL_0)
+    )["t"]
+
+    total_recebido = pagamentos.aggregate(
+        t=Coalesce(Sum("valor"), DECIMAL_0)
+    )["t"]
+
+    # saldo por pedido (sem usar annotate "saldo" pra não bater com property)
+    saldo_total = Decimal("0.00")
+    pedidos_em_aberto = []
+    for p in qs_pedidos:
+        recebido_p = (
+            PagamentoPedido.objects
+            .filter(pedido=p)
+            .aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
+        )
+        saldo = (p.total or Decimal("0.00")) - (recebido_p or Decimal("0.00"))
+        if saldo > 0:
+            pedidos_em_aberto.append({
+                "pedido": p,
+                "recebido": recebido_p,
+                "saldo": saldo,
+            })
+            saldo_total += saldo
+
+    # ===== RESUMOS =====
+
+    # por método
+    resumo_por_metodo = (
+        pagamentos.values("metodo_pagamento")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
+
+    # por dia (caixa) — baseado no dia do pagamento
+    resumo_por_dia = (
+        pagamentos
+        .values("pago_em__date")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("pago_em__date")
+    )
+
+    # por lavandaria (se tiver multi)
+    resumo_por_lavandaria = (
+        pagamentos
+        .values("pedido__lavandaria__nome")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
+
+    # por caixa (funcionário)
+    resumo_por_caixa = (
+        pagamentos
+        .values("criado_por__user__username")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
+
+    # Lavandaria “do usuário” (se existir)
+    try:
+        lavandaria = request.user.funcionario.lavandaria
+    except Exception:
+        lavandaria = None
+
+    start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
+    end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
+
+    html_string = render_to_string("core/relatorio_financeiro.html", {
+        "lavandaria": lavandaria,
+
+        "start_date": start_date,
+        "end_date": end_date,
+
+        "total_faturado": total_faturado,
+        "total_recebido": total_recebido,
+        "saldo_total": saldo_total,
+
+        "resumo_por_metodo": resumo_por_metodo,
+        "resumo_por_dia": resumo_por_dia,
+        "resumo_por_lavandaria": resumo_por_lavandaria,
+        "resumo_por_caixa": resumo_por_caixa,
+
+        "pagamentos": pagamentos,
+        "pedidos_em_aberto": pedidos_em_aberto,  # lista de dicts: pedido/recebido/saldo
+        "pedidos": qs_pedidos,
+    })
+
+    buffer = BytesIO()
+    filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
+    pisa_status = pisa.CreatePDF(html_string, dest=buffer)
+
+    if pisa_status.err:
+        return HttpResponse("Erro ao gerar PDF", content_type="text/plain")
+
+    buffer.seek(0)
+    response = HttpResponse(buffer, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+    return response
 
 
 @admin.register(User)
@@ -781,16 +851,6 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
-
-
-
-
-
-
-
-
-
-
 
 
 
