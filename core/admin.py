@@ -97,47 +97,134 @@ DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, deci
 
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    Gera um relatório financeiro em PDF dos pedidos selecionados no Django Admin.
+    RELATÓRIO FINANCEIRO (Caixa) — por recebimentos (PagamentoPedido).
+    Funciona com pagamentos parciais.
     """
 
-    # Separar pagos e não pagos
-    queryset_pagos = queryset.filter(pago=True).order_by('metodo_pagamento')
-    queryset_nao_pagos = queryset.filter(pago=False)
+    qs_pedidos = (
+        queryset
+        .select_related("cliente", "lavandaria", "funcionario")
+        .order_by("criado_em")
+    )
 
-    # Calcular totais por pedido (pagos)
-    for pedido in queryset_pagos:
-        pedido.total_quantidade = sum(item.quantidade for item in pedido.itens.all())
-        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
-
-    # Calcular totais por pedido (não pagos)
-    for pedido in queryset_nao_pagos:
-        pedido.total_valor = sum(item.preco_total for item in pedido.itens.all())
-
-    # Totais gerais
-    total_quantidade = sum(pedido.total_quantidade for pedido in queryset_pagos)
-    total_valor = sum(pedido.total_valor for pedido in queryset_pagos)
-
-    # Datas do relatório
-    if queryset.exists():
-        start_date = queryset.order_by('data_pagamento').first().data_pagamento.strftime('%d/%m/%Y')
-        end_date = queryset.order_by('data_pagamento').last().data_pagamento.strftime('%d/%m/%Y')
+    # janela “visual” do relatório (baseada nos pedidos selecionados)
+    if qs_pedidos.exists():
+        start_dt = qs_pedidos.first().criado_em
+        end_dt = qs_pedidos.last().criado_em
     else:
-        start_date = end_date = datetime.today().strftime('%d/%m/%Y')
+        now = timezone.now()
+        start_dt = now - timezone.timedelta(days=1)
+        end_dt = now
 
-    lavandaria = request.user.funcionario.lavandaria
+    # Pagamentos (recebimentos) pertencentes aos pedidos selecionados
+    pagamentos = (
+        PagamentoPedido.objects
+        .filter(pedido__in=qs_pedidos)
+        .select_related("pedido", "pedido__cliente", "pedido__lavandaria", "criado_por", "criado_por__user")
+        .order_by("pago_em", "id")
+    )
 
-    # Renderizar o HTML para PDF
-    html_string = render_to_string('core/relatorio_financeiro.html', {
-        'lavandaria': lavandaria,
-        'pedidos_pagos': queryset_pagos,
-        'nao_pagos': [],
-        'total_quantidade': total_quantidade,
-        'total_valor': total_valor,
-        'start_date': start_date,
-        'end_date': end_date,
+    # ===== TOTAIS =====
+    total_faturado = qs_pedidos.aggregate(
+        t=Coalesce(Sum("total"), DECIMAL_0)
+    )["t"]
+
+    total_recebido = pagamentos.aggregate(
+        t=Coalesce(Sum("valor"), DECIMAL_0)
+    )["t"]
+
+    # saldo por pedido (sem usar annotate "saldo" pra não bater com property)
+    saldo_total = Decimal("0.00")
+    pedidos_em_aberto = []
+    for p in qs_pedidos:
+        recebido_p = (
+            PagamentoPedido.objects
+            .filter(pedido=p)
+            .aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
+        )
+        saldo = (p.total or Decimal("0.00")) - (recebido_p or Decimal("0.00"))
+        if saldo > 0:
+            pedidos_em_aberto.append({
+                "pedido": p,
+                "recebido": recebido_p,
+                "saldo": saldo,
+            })
+            saldo_total += saldo
+
+    # ===== RESUMOS =====
+
+    # por método
+    resumo_por_metodo = (
+        pagamentos.values("metodo_pagamento")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
+
+    # por dia (caixa) — baseado no dia do pagamento
+    resumo_por_dia = (
+        pagamentos
+        .values("pago_em__date")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("pago_em__date")
+    )
+
+    # por lavandaria (se tiver multi)
+    resumo_por_lavandaria = (
+        pagamentos
+        .values("pedido__lavandaria__nome")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
+
+    # por caixa (funcionário)
+    resumo_por_caixa = (
+        pagamentos
+        .values("criado_por__user__username")
+        .annotate(
+            qtd=Count("id"),
+            total=Coalesce(Sum("valor"), DECIMAL_0),
+        )
+        .order_by("-total")
+    )
+
+    # Lavandaria “do usuário” (se existir)
+    try:
+        lavandaria = request.user.funcionario.lavandaria
+    except Exception:
+        lavandaria = None
+
+    start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
+    end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
+
+    html_string = render_to_string("core/relatorio_financeiro.html", {
+        "lavandaria": lavandaria,
+
+        "start_date": start_date,
+        "end_date": end_date,
+
+        "total_faturado": total_faturado,
+        "total_recebido": total_recebido,
+        "saldo_total": saldo_total,
+
+        "resumo_por_metodo": resumo_por_metodo,
+        "resumo_por_dia": resumo_por_dia,
+        "resumo_por_lavandaria": resumo_por_lavandaria,
+        "resumo_por_caixa": resumo_por_caixa,
+
+        "pagamentos": pagamentos,
+        "pedidos_em_aberto": pedidos_em_aberto,  # lista de dicts: pedido/recebido/saldo
+        "pedidos": qs_pedidos,
     })
 
-    # Gerar o PDF
     buffer = BytesIO()
     filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
@@ -147,9 +234,9 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
 
     buffer.seek(0)
     response = HttpResponse(buffer, content_type="application/pdf")
-    response['Content-Disposition'] = f'attachment; filename="{filename}"'
-
+    response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
+
 
        
 
@@ -767,6 +854,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
