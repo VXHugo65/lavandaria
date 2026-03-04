@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import models
 from unfold.admin import ModelAdmin, StackedInline
 # REMOVA ou modifique esta linha:
 # from django import forms
@@ -97,8 +98,7 @@ DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, deci
 
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO (Caixa) — por recebimentos (PagamentoPedido).
-    Funciona com pagamentos parciais.
+    RELATÓRIO FINANCEIRO (Caixa) - CORREÇÃO DO FILTRO DE DATA
     """
 
     qs_pedidos = (
@@ -107,53 +107,83 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("criado_em")
     )
 
-    # janela “visual” do relatório (baseada nos pedidos selecionados)
+    # 🔥 CORREÇÃO: Usar data do PAGAMENTO como referência, não data do pedido
     if qs_pedidos.exists():
-        start_dt = qs_pedidos.first().criado_em
-        end_dt = qs_pedidos.last().criado_em
+        # Pega a data do PRIMEIRO PAGAMENTO dos pedidos selecionados
+        primeiro_pagamento = PagamentoPedido.objects.filter(
+            pedido__in=qs_pedidos
+        ).order_by('pago_em').first()
+
+        ultimo_pagamento = PagamentoPedido.objects.filter(
+            pedido__in=qs_pedidos
+        ).order_by('-pago_em').first()
+
+        if primeiro_pagamento and ultimo_pagamento:
+            start_dt = primeiro_pagamento.pago_em
+            end_dt = ultimo_pagamento.pago_em
+        else:
+            # Se não tem pagamentos, usa data atual
+            now = timezone.now()
+            start_dt = now - timezone.timedelta(days=1)
+            end_dt = now
     else:
         now = timezone.now()
         start_dt = now - timezone.timedelta(days=1)
         end_dt = now
 
-    # Pagamentos (recebimentos) pertencentes aos pedidos selecionados
+    # 🔥 PAGAMENTOS DO PERÍODO (agora com as datas corretas)
     pagamentos = (
         PagamentoPedido.objects
         .filter(pedido__in=qs_pedidos)
+        .filter(pago_em__gte=start_dt, pago_em__lte=end_dt)
         .select_related("pedido", "pedido__cliente", "pedido__lavandaria", "criado_por", "criado_por__user")
         .order_by("pago_em", "id")
     )
 
     # ===== TOTAIS =====
-    total_faturado = qs_pedidos.aggregate(
-        t=Coalesce(Sum("total"), DECIMAL_0)
-    )["t"]
+    total_faturado = Decimal("0.00")
+    for p in qs_pedidos:
+        total_faturado += p.total_final
 
     total_recebido = pagamentos.aggregate(
         t=Coalesce(Sum("valor"), DECIMAL_0)
     )["t"]
 
-    # saldo por pedido (sem usar annotate "saldo" pra não bater com property)
+    # ===== SALDOS POR PEDIDO =====
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
+
+    # Para cada pedido, buscar TODOS os pagamentos (histórico completo)
     for p in qs_pedidos:
-        recebido_p = (
-            PagamentoPedido.objects
-            .filter(pedido=p)
-            .aggregate(t=Coalesce(Sum("valor"), DECIMAL_0))["t"]
-        )
-        saldo = (p.total or Decimal("0.00")) - (recebido_p or Decimal("0.00"))
-        if saldo > 0:
+        total_final = p.total_final
+
+        # 🔥 TODOS os pagamentos deste pedido (histórico completo)
+        todos_pagamentos = PagamentoPedido.objects.filter(pedido=p)
+        total_pago_historico = todos_pagamentos.aggregate(
+            t=Coalesce(Sum("valor"), DECIMAL_0)
+        )["t"]
+
+        # Pagamentos deste pedido NO PERÍODO
+        pago_no_periodo = pagamentos.filter(pedido=p).aggregate(
+            t=Coalesce(Sum("valor"), DECIMAL_0)
+        )["t"]
+
+        # Saldo REAL (considerando todos pagamentos históricos)
+        saldo_real = total_final - total_pago_historico
+
+        if saldo_real > 0.01:
             pedidos_em_aberto.append({
                 "pedido": p,
-                "recebido": recebido_p,
-                "saldo": saldo,
+                "total_final": total_final,
+                "total_pago_historico": total_pago_historico,
+                "pago_no_periodo": pago_no_periodo,
+                "saldo": saldo_real,
+                "desconto_geral": p.desconto,
+                "desconto_cabides": p.desconto_cabides,
             })
-            saldo_total += saldo
+            saldo_total += saldo_real
 
-    # ===== RESUMOS =====
-
-    # por método
+    # ===== RESUMOS (usando pagamentos do período) =====
     resumo_por_metodo = (
         pagamentos.values("metodo_pagamento")
         .annotate(
@@ -163,7 +193,6 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("-total")
     )
 
-    # por dia (caixa) — baseado no dia do pagamento
     resumo_por_dia = (
         pagamentos
         .values("pago_em__date")
@@ -174,7 +203,6 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("pago_em__date")
     )
 
-    # por lavandaria (se tiver multi)
     resumo_por_lavandaria = (
         pagamentos
         .values("pedido__lavandaria__nome")
@@ -185,7 +213,6 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("-total")
     )
 
-    # por caixa (funcionário)
     resumo_por_caixa = (
         pagamentos
         .values("criado_por__user__username")
@@ -196,18 +223,17 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("-total")
     )
 
-    # Lavandaria “do usuário” (se existir)
+    # Lavandaria do usuário
     try:
         lavandaria = request.user.funcionario.lavandaria
     except Exception:
         lavandaria = None
 
-    start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
-    end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
+    start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y %H:%M")
+    end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y %H:%M")
 
     html_string = render_to_string("core/relatorio_financeiro.html", {
         "lavandaria": lavandaria,
-
         "start_date": start_date,
         "end_date": end_date,
 
@@ -221,7 +247,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         "resumo_por_caixa": resumo_por_caixa,
 
         "pagamentos": pagamentos,
-        "pedidos_em_aberto": pedidos_em_aberto,  # lista de dicts: pedido/recebido/saldo
+        "pedidos_em_aberto": pedidos_em_aberto,
         "pedidos": qs_pedidos,
     })
 
@@ -236,7 +262,6 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     response = HttpResponse(buffer, content_type="application/pdf")
     response["Content-Disposition"] = f'attachment; filename="{filename}"'
     return response
-
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin, ModelAdmin, ImportExportModelAdmin):
