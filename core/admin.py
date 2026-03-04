@@ -110,31 +110,57 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     # 🔥 CORREÇÃO: Usar os parâmetros CORRETOS do filtro (pago_em__gte e pago_em__lte)
     data_inicio = request.GET.get('pago_em__gte')
     data_fim = request.GET.get('pago_em__lte')
-
+    
+    # Se não encontrar com pago_em__, tenta com data_pagamento_from (como está na URL)
+    if not data_inicio:
+        data_inicio = request.GET.get('data_pagamento_from_0')
+        hora_inicio = request.GET.get('data_pagamento_from_1', '00:00:00')
+        if data_inicio:
+            data_inicio = f"{data_inicio} {hora_inicio}"
+    
+    if not data_fim:
+        data_fim = request.GET.get('data_pagamento_to_0')
+        hora_fim = request.GET.get('data_pagamento_to_1', '23:59:59')
+        if data_fim:
+            data_fim = f"{data_fim} {hora_fim}"
+    
     from datetime import datetime
-    import pytz
-
+    
     if data_inicio and data_fim:
         # Converte string para datetime
-        # O formato pode ser '2026-02-26 06:00:00' ou '2026-02-26'
         try:
             # Tenta converter com hora
             start_dt = datetime.strptime(data_inicio, '%Y-%m-%d %H:%M:%S')
-        except ValueError:
-            # Se não tiver hora, usa meia-noite
-            start_dt = datetime.strptime(data_inicio, '%Y-%m-%d')
-            start_dt = start_dt.replace(hour=0, minute=0, second=0)
-
+        except (ValueError, TypeError):
+            try:
+                # Se não tiver hora, usa meia-noite
+                start_dt = datetime.strptime(data_inicio, '%Y-%m-%d')
+                start_dt = start_dt.replace(hour=0, minute=0, second=0)
+            except (ValueError, TypeError):
+                start_dt = None
+        
         try:
             end_dt = datetime.strptime(data_fim, '%Y-%m-%d %H:%M:%S')
-        except ValueError:
-            end_dt = datetime.strptime(data_fim, '%Y-%m-%d')
-            end_dt = end_dt.replace(hour=23, minute=59, second=59)
-
-        # Torna timezone aware
-        start_dt = timezone.make_aware(start_dt)
-        end_dt = timezone.make_aware(end_dt)
-
+        except (ValueError, TypeError):
+            try:
+                end_dt = datetime.strptime(data_fim, '%Y-%m-%d')
+                end_dt = end_dt.replace(hour=23, minute=59, second=59)
+            except (ValueError, TypeError):
+                end_dt = None
+        
+        # Se conseguiu converter, torna timezone aware usando Django
+        if start_dt and end_dt:
+            start_dt = timezone.make_aware(start_dt)
+            end_dt = timezone.make_aware(end_dt)
+        else:
+            # Fallback para datas dos pedidos
+            if qs_pedidos.exists():
+                start_dt = qs_pedidos.first().criado_em
+                end_dt = qs_pedidos.last().criado_em
+            else:
+                now = timezone.now()
+                start_dt = now - timezone.timedelta(days=1)
+                end_dt = now
     else:
         # Se não veio filtro, usa o período dos pedidos selecionados
         if qs_pedidos.exists():
@@ -166,29 +192,29 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     # ===== SALDOS POR PEDIDO =====
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
-
+    
     # Mapear pagamentos por pedido para otimizar
     pagamentos_por_pedido = {}
     for pag in pagamentos:
         if pag.pedido_id not in pagamentos_por_pedido:
             pagamentos_por_pedido[pag.pedido_id] = Decimal("0.00")
         pagamentos_por_pedido[pag.pedido_id] += pag.valor
-
+    
     for p in qs_pedidos:
         total_final = p.total_final
-
+        
         # 🔥 Pagamentos deste pedido NO PERÍODO FILTRADO
         pago_no_periodo = pagamentos_por_pedido.get(p.id, Decimal("0.00"))
-
+        
         # 🔥 TODOS os pagamentos deste pedido (histórico completo)
         todos_pagamentos = PagamentoPedido.objects.filter(pedido=p)
         total_pago_historico = todos_pagamentos.aggregate(
             t=Coalesce(Sum("valor"), DECIMAL_0)
         )["t"]
-
+        
         # Saldo REAL (considerando todos pagamentos históricos)
         saldo_real = total_final - total_pago_historico
-
+        
         # Só mostra no resumo se tiver saldo > 0
         if saldo_real > 0.01:
             pedidos_em_aberto.append({
@@ -256,16 +282,16 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         "lavandaria": lavandaria,
         "start_date": start_date,
         "end_date": end_date,
-
+        
         "total_faturado": total_faturado,
         "total_recebido": total_recebido,
         "saldo_total": saldo_total,
-
+        
         "resumo_por_metodo": resumo_por_metodo,
         "resumo_por_dia": resumo_por_dia,
         "resumo_por_lavandaria": resumo_por_lavandaria,
         "resumo_por_caixa": resumo_por_caixa,
-
+        
         "pagamentos": pagamentos,
         "pedidos_em_aberto": pedidos_em_aberto,
         "pedidos": qs_pedidos,
@@ -896,6 +922,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
