@@ -32,20 +32,3 @@ def currency_mzn(value):
         return f"{value:,.2f} MZN".replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
         return "0,00 MZN"
-
-
-# core/templatetags/custom_filters.py
-from django import template
-
-register = template.Library()
-
-@register.filter
-def div(value, arg):
-    """
-    Divide o valor pelo argumento
-    Uso: {{ valor|div:arg }}
-    """
-    try:
-        return float(value) / float(arg)
-    except (ValueError, ZeroDivisionError, TypeError):
-        return 0
