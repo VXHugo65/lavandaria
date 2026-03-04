@@ -98,7 +98,7 @@ DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, deci
 
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO (Caixa) - CORREÇÃO DO FILTRO DE DATA
+    RELATÓRIO FINANCEIRO (Caixa) - RESPEITA O FILTRO DE DATA APLICADO
     """
 
     qs_pedidos = (
@@ -107,35 +107,35 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("criado_em")
     )
 
-    # 🔥 CORREÇÃO: Usar data do PAGAMENTO como referência, não data do pedido
-    if qs_pedidos.exists():
-        # Pega a data do PRIMEIRO PAGAMENTO dos pedidos selecionados
-        primeiro_pagamento = PagamentoPedido.objects.filter(
-            pedido__in=qs_pedidos
-        ).order_by('pago_em').first()
-
-        ultimo_pagamento = PagamentoPedido.objects.filter(
-            pedido__in=qs_pedidos
-        ).order_by('-pago_em').first()
-
-        if primeiro_pagamento and ultimo_pagamento:
-            start_dt = primeiro_pagamento.pago_em
-            end_dt = ultimo_pagamento.pago_em
+    # 🔥 CORREÇÃO: Usar as datas do FILTRO aplicado no admin
+    # O Django admin passa os filtros via request.GET
+    data_inicio = request.GET.get('criado_em__gte')  # ou o nome do seu filtro
+    data_fim = request.GET.get('criado_em__lte')     # ou o nome do seu filtro
+    
+    if data_inicio and data_fim:
+        # Converte string para datetime
+        from datetime import datetime
+        start_dt = datetime.strptime(data_inicio, '%Y-%m-%d').date()
+        end_dt = datetime.strptime(data_fim, '%Y-%m-%d').date()
+        
+        # Adiciona hora para cobrir o dia inteiro
+        start_dt = timezone.make_aware(datetime.combine(start_dt, datetime.min.time()))
+        end_dt = timezone.make_aware(datetime.combine(end_dt, datetime.max.time()))
+    else:
+        # Se não veio filtro, usa o período dos pedidos selecionados
+        if qs_pedidos.exists():
+            start_dt = qs_pedidos.first().criado_em
+            end_dt = qs_pedidos.last().criado_em
         else:
-            # Se não tem pagamentos, usa data atual
             now = timezone.now()
             start_dt = now - timezone.timedelta(days=1)
             end_dt = now
-    else:
-        now = timezone.now()
-        start_dt = now - timezone.timedelta(days=1)
-        end_dt = now
 
-    # 🔥 PAGAMENTOS DO PERÍODO (agora com as datas corretas)
+    # 🔥 PAGAMENTOS DO PERÍODO FILTRADO (não da data dos pedidos)
     pagamentos = (
         PagamentoPedido.objects
         .filter(pedido__in=qs_pedidos)
-        .filter(pago_em__gte=start_dt, pago_em__lte=end_dt)
+        .filter(pago_em__gte=start_dt, pago_em__lte=end_dt)  # ← Agora usa as datas do filtro
         .select_related("pedido", "pedido__cliente", "pedido__lavandaria", "criado_por", "criado_por__user")
         .order_by("pago_em", "id")
     )
@@ -145,6 +145,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     for p in qs_pedidos:
         total_faturado += p.total_final
 
+    # Total recebido NO PERÍODO FILTRADO
     total_recebido = pagamentos.aggregate(
         t=Coalesce(Sum("valor"), DECIMAL_0)
     )["t"]
@@ -152,38 +153,38 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     # ===== SALDOS POR PEDIDO =====
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
-
-    # Para cada pedido, buscar TODOS os pagamentos (histórico completo)
+    
     for p in qs_pedidos:
         total_final = p.total_final
-
+        
         # 🔥 TODOS os pagamentos deste pedido (histórico completo)
         todos_pagamentos = PagamentoPedido.objects.filter(pedido=p)
         total_pago_historico = todos_pagamentos.aggregate(
             t=Coalesce(Sum("valor"), DECIMAL_0)
         )["t"]
-
-        # Pagamentos deste pedido NO PERÍODO
+        
+        # 🔥 Pagamentos deste pedido NO PERÍODO FILTRADO
         pago_no_periodo = pagamentos.filter(pedido=p).aggregate(
             t=Coalesce(Sum("valor"), DECIMAL_0)
         )["t"]
-
+        
         # Saldo REAL (considerando todos pagamentos históricos)
         saldo_real = total_final - total_pago_historico
-
+        
+        # Só mostra no resumo se tiver saldo > 0
         if saldo_real > 0.01:
             pedidos_em_aberto.append({
                 "pedido": p,
                 "total_final": total_final,
                 "total_pago_historico": total_pago_historico,
-                "pago_no_periodo": pago_no_periodo,
+                "pago_no_periodo": pago_no_periodo,  # Quanto pagou neste período
                 "saldo": saldo_real,
                 "desconto_geral": p.desconto,
                 "desconto_cabides": p.desconto_cabides,
             })
             saldo_total += saldo_real
 
-    # ===== RESUMOS (usando pagamentos do período) =====
+    # ===== RESUMOS (usando apenas pagamentos do período filtrado) =====
     resumo_por_metodo = (
         pagamentos.values("metodo_pagamento")
         .annotate(
@@ -232,27 +233,31 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y %H:%M")
     end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y %H:%M")
 
+    # Para exibição simples (só data)
+    start_date_simple = timezone.localtime(start_dt).strftime("%d/%m/%Y")
+    end_date_simple = timezone.localtime(end_dt).strftime("%d/%m/%Y")
+
     html_string = render_to_string("core/relatorio_financeiro.html", {
         "lavandaria": lavandaria,
-        "start_date": start_date,
-        "end_date": end_date,
-
+        "start_date": start_date_simple,  # Exibe só a data
+        "end_date": end_date_simple,      # Exibe só a data
+        
         "total_faturado": total_faturado,
         "total_recebido": total_recebido,
         "saldo_total": saldo_total,
-
+        
         "resumo_por_metodo": resumo_por_metodo,
         "resumo_por_dia": resumo_por_dia,
         "resumo_por_lavandaria": resumo_por_lavandaria,
         "resumo_por_caixa": resumo_por_caixa,
-
-        "pagamentos": pagamentos,
+        
+        "pagamentos": pagamentos,  # Só pagamentos do período filtrado
         "pedidos_em_aberto": pedidos_em_aberto,
         "pedidos": qs_pedidos,
     })
 
     buffer = BytesIO()
-    filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
+    filename = f"relatorio_financeiro_{start_date_simple}_a_{end_date_simple}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
 
     if pisa_status.err:
@@ -876,6 +881,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
