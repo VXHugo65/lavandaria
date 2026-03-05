@@ -98,91 +98,76 @@ DECIMAL_0 = Value(Decimal("0.00"), output_field=DecimalField(max_digits=12, deci
 
 def gerar_relatorio_financeiro(modeladmin, request, queryset):
     """
-    RELATÓRIO FINANCEIRO (Caixa) - FOCADO EM PAGAMENTOS
-    Mostra APENAS os pagamentos dentro do período filtrado
+    RELATÓRIO FINANCEIRO (Caixa) - FILTRADO POR LAVANDARIA DO USUÁRIO
+    Mostra APENAS os pagamentos da lavandaria do usuário logado
     """
 
-    # ===== CAPTURAR O FILTRO DE DATA =====
-    data_inicio = request.GET.get('pago_em__gte')
-    data_fim = request.GET.get('pago_em__lte')
+    # ===== PEGAR LAVANDARIA DO USUÁRIO =====
+    try:
+        funcionario = Funcionario.objects.get(user=request.user)
+        lavandaria_usuario = funcionario.lavandaria
+        if not lavandaria_usuario:
+            messages.error(request, "Você não está associado a nenhuma lavandaria!")
+            return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+    except Funcionario.DoesNotExist:
+        messages.error(request, "Usuário não é um funcionário válido!")
+        return redirect(request.META.get('HTTP_REFERER', 'admin:index'))
+
+    # ===== CAPTURAR O FILTRO DE DATA DO ADMIN =====
+    data_inicio = request.GET.get('data_pagamento_from_0')
+    hora_inicio = request.GET.get('data_pagamento_from_1', '00:00:00')
     
-    # Tenta capturar do formato do admin (data_pagamento_from_0, data_pagamento_to_0)
-    if not data_inicio:
-        data_inicio = request.GET.get('data_pagamento_from_0')
-        hora_inicio = request.GET.get('data_pagamento_from_1', '00:00:00')
-        if data_inicio:
-            data_inicio = f"{data_inicio} {hora_inicio}"
-    
-    if not data_fim:
-        data_fim = request.GET.get('data_pagamento_to_0')
-        hora_fim = request.GET.get('data_pagamento_to_1', '23:59:59')
-        if data_fim:
-            data_fim = f"{data_fim} {hora_fim}"
+    data_fim = request.GET.get('data_pagamento_to_0')
+    hora_fim = request.GET.get('data_pagamento_to_1', '23:59:59')
     
     from datetime import datetime
     
     # ===== DEFINIR O PERÍODO DO RELATÓRIO =====
     if data_inicio and data_fim:
         try:
-            start_dt = datetime.strptime(data_inicio, '%Y-%m-%d %H:%M:%S')
+            start_dt = datetime.strptime(f"{data_inicio} {hora_inicio}", '%Y-%m-%d %H:%M:%S')
+            end_dt = datetime.strptime(f"{data_fim} {hora_fim}", '%Y-%m-%d %H:%M:%S')
+            
+            start_dt = timezone.make_aware(start_dt)
+            end_dt = timezone.make_aware(end_dt)
         except (ValueError, TypeError):
-            try:
-                start_dt = datetime.strptime(data_inicio, '%Y-%m-%d')
-                start_dt = start_dt.replace(hour=0, minute=0, second=0)
-            except (ValueError, TypeError):
-                start_dt = timezone.now() - timezone.timedelta(days=30)
-        
-        try:
-            end_dt = datetime.strptime(data_fim, '%Y-%m-%d %H:%M:%S')
-        except (ValueError, TypeError):
-            try:
-                end_dt = datetime.strptime(data_fim, '%Y-%m-%d')
-                end_dt = end_dt.replace(hour=23, minute=59, second=59)
-            except (ValueError, TypeError):
-                end_dt = timezone.now()
-        
-        start_dt = timezone.make_aware(start_dt)
-        end_dt = timezone.make_aware(end_dt)
+            start_dt = timezone.now() - timezone.timedelta(days=30)
+            end_dt = timezone.now()
     else:
-        # Se não veio filtro, usa os pedidos selecionados
         if queryset.exists():
-            # Pega a data do PRIMEIRO e ÚLTIMO PAGAMENTO dos pedidos selecionados
-            primeiro_pagamento = PagamentoPedido.objects.filter(
-                pedido__in=queryset
-            ).order_by('pago_em').first()
-            
-            ultimo_pagamento = PagamentoPedido.objects.filter(
-                pedido__in=queryset
-            ).order_by('-pago_em').first()
-            
-            if primeiro_pagamento and ultimo_pagamento:
-                start_dt = primeiro_pagamento.pago_em
-                end_dt = ultimo_pagamento.pago_em
-            else:
-                start_dt = queryset.first().criado_em
-                end_dt = queryset.last().criado_em
+            start_dt = queryset.first().criado_em
+            end_dt = queryset.last().criado_em
         else:
             now = timezone.now()
             start_dt = now - timezone.timedelta(days=30)
             end_dt = now
 
-    # ===== BUSCAR APENAS PAGAMENTOS DO PERÍODO =====
-    # 🔥 IMPORTANTE: Não filtrar por pedido__in=queryset!
+    # ===== BUSCAR APENAS PAGAMENTOS DA LAVANDARIA DO USUÁRIO =====
     pagamentos = (
         PagamentoPedido.objects
         .filter(pago_em__gte=start_dt, pago_em__lte=end_dt)
-        .select_related("pedido", "pedido__cliente", "pedido__lavandaria", "criado_por", "criado_por__user")
+        .filter(pedido__lavandaria=lavandaria_usuario)  # ← FILTRO POR LAVANDARIA
+        .select_related(
+            "pedido", 
+            "pedido__cliente", 
+            "pedido__lavandaria", 
+            "criado_por", 
+            "criado_por__user"
+        )
         .order_by("pago_em", "id")
     )
 
-    # Se o usuário selecionou pedidos específicos, podemos filtrar (opcional)
-    # Mas para mostrar APENAS pagamentos do período, não filtramos por pedido
-    if queryset.exists() and False:  # Desativado para mostrar TODOS pagamentos do período
-        pagamentos = pagamentos.filter(pedido__in=queryset)
+    # Se o usuário selecionou pedidos específicos, podemos filtrar
+    if queryset.exists():
+        # Mas ainda assim, só da lavandaria dele
+        pagamentos = pagamentos.filter(pedido__in=queryset.filter(lavandaria=lavandaria_usuario))
 
-    # ===== PEDIDOS RELACIONADOS (para informação) =====
+    # ===== PEDIDOS RELACIONADOS (apenas da lavandaria) =====
     pedidos_ids = pagamentos.values_list('pedido_id', flat=True).distinct()
-    qs_pedidos = Pedido.objects.filter(id__in=pedidos_ids)
+    qs_pedidos = Pedido.objects.filter(
+        id__in=pedidos_ids,
+        lavandaria=lavandaria_usuario  # ← Garantir que são da lavandaria
+    )
 
     # ===== TOTAIS =====
     total_faturado = Decimal("0.00")
@@ -197,7 +182,6 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     saldo_total = Decimal("0.00")
     pedidos_em_aberto = []
     
-    # Mapear pagamentos do período por pedido
     pagamentos_por_pedido = {}
     for pag in pagamentos:
         if pag.pedido_id not in pagamentos_por_pedido:
@@ -206,17 +190,16 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     
     for p in qs_pedidos:
         total_final = p.total_final
-        
-        # Pagamentos deste pedido NO PERÍODO
         pago_no_periodo = pagamentos_por_pedido.get(p.id, Decimal("0.00"))
         
-        # TODOS os pagamentos deste pedido (histórico completo)
-        todos_pagamentos = PagamentoPedido.objects.filter(pedido=p)
+        todos_pagamentos = PagamentoPedido.objects.filter(
+            pedido=p,
+            pedido__lavandaria=lavandaria_usuario
+        )
         total_pago_historico = todos_pagamentos.aggregate(
             t=Coalesce(Sum("valor"), DECIMAL_0)
         )["t"]
         
-        # Saldo REAL
         saldo_real = total_final - total_pago_historico
         
         if saldo_real > 0.01:
@@ -229,7 +212,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
             })
             saldo_total += saldo_real
 
-    # ===== RESUMOS (apenas pagamentos do período) =====
+    # ===== RESUMOS (apenas pagamentos da lavandaria) =====
     resumo_por_metodo = (
         pagamentos.values("metodo_pagamento")
         .annotate(
@@ -249,6 +232,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("pago_em__date")
     )
 
+    # 🔥 RESUMO POR LAVANDARIA (agora vai mostrar apenas a lavandaria do usuário)
     resumo_por_lavandaria = (
         pagamentos
         .values("pedido__lavandaria__nome")
@@ -269,17 +253,11 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         .order_by("-total")
     )
 
-    # Lavandaria do usuário
-    try:
-        lavandaria = request.user.funcionario.lavandaria
-    except Exception:
-        lavandaria = None
-
     start_date = timezone.localtime(start_dt).strftime("%d/%m/%Y")
     end_date = timezone.localtime(end_dt).strftime("%d/%m/%Y")
 
     html_string = render_to_string("core/relatorio_financeiro.html", {
-        "lavandaria": lavandaria,
+        "lavandaria": lavandaria_usuario,  # ← Agora passa a lavandaria do usuário
         "start_date": start_date,
         "end_date": end_date,
         
@@ -289,10 +267,10 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
         
         "resumo_por_metodo": resumo_por_metodo,
         "resumo_por_dia": resumo_por_dia,
-        "resumo_por_lavandaria": resumo_por_lavandaria,
+        "resumo_por_lavandaria": resumo_por_lavandaria,  # ← Só da lavandaria
         "resumo_por_caixa": resumo_por_caixa,
         
-        "pagamentos": pagamentos,  # ← APENAS pagamentos do período
+        "pagamentos": pagamentos,
         "pedidos_em_aberto": pedidos_em_aberto,
         "pedidos": qs_pedidos,
         
@@ -300,7 +278,7 @@ def gerar_relatorio_financeiro(modeladmin, request, queryset):
     })
 
     buffer = BytesIO()
-    filename = f"relatorio_financeiro_{start_date}_a_{end_date}.pdf"
+    filename = f"relatorio_financeiro_{lavandaria_usuario.nome}_{start_date}_a_{end_date}.pdf"
     pisa_status = pisa.CreatePDF(html_string, dest=buffer)
 
     if pisa_status.err:
@@ -924,6 +902,7 @@ class PagamentoPedidoAdmin(ModelAdmin):
             messages.success(request, f"{feitos} pedido(s) quitado(s) com pagamento do saldo.")
         else:
             messages.warning(request, "Nenhum pedido com saldo pendente.")
+
 
 
 
